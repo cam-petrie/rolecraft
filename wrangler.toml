@@ -1,0 +1,8 @@
+name = "rolecraft-gateway"
+main = "server/worker.js"
+compatibility_date = "2026-10-01"
+[vars]
+OPENAI_MODEL = "gpt-4.1-mini"
+# Origin only, without a path or trailing slash. Replace before deployment.
+ALLOWED_ORIGINS = "https://YOUR-USERNAME.github.io"
+# Set OPENAI_API_KEY and GATEWAY_TOKEN using wrangler secret put.
