@@ -4,6 +4,10 @@ A private-by-default resume and interview workspace. The React frontend runs on 
 
 ## What is included
 
+- A document-first workspace with compact top navigation, a large formatted resume viewport and a contextual right panel for the target role, fit review or recommendations.
+- Direct paragraph editing on the rendered DOCX page. Enter saves, Escape cancels, and pasted text does not import foreign formatting. Complex or mismatched rendered paragraphs remain read-only.
+- Suggestions can be previewed on the resume without saving, then applied or cancelled. An original/draft toggle, zoom controls and fit-to-width keep the document in focus.
+
 - DOCX and text-based PDF resume upload, with original-file retention.
 - Automatic protected baseline; one-click restoration with an automatic snapshot of the current draft.
 - Job title, company, link and description. Import supported public Greenhouse, Lever, Ashby and Workday listings, or paste any job description.
@@ -27,7 +31,7 @@ npm ci
 npm run dev
 ```
 
-Open the Local URL printed by Vite, normally `http://127.0.0.1:5173`. Click **Explore an example** to walk through the workflow without an API key. For real resumes, upload a file and configure the gateway below. File import, manual editing, versions and exports work without AI access.
+Open the Local URL printed by Vite, normally `http://127.0.0.1:5173`. Click **Explore an example** to walk through the workflow without an API key. The top resume-library selector switches files; the adjacent upload control adds another resume. For real resumes, upload a file and configure the gateway below. File import, manual editing, versions and exports work without AI access.
 
 ```bash
 npm test
@@ -73,9 +77,9 @@ Your site will normally be at `https://YOUR-USERNAME.github.io/rolecraft/`. The 
 
 **DOCX is the preferred source.** Editing changes only text in `word/document.xml`. Equal text keeps its original runs; inserted text inherits a neighboring run’s styling. Fonts, sections, tables, relationships and other ZIP entries are retained. Browser preview is approximate: adding text can change wrapping, page count or visual balance. Review the downloaded file in Word or LibreOffice before submitting it. Exact pagination cannot be guaranteed for arbitrary edits.
 
-Paragraphs with Word fields, tracked changes, tabs, line breaks, content controls and certain embedded objects are read-only to avoid damaging them. The editor changes existing paragraph text; it does not add/reorder sections or offer a full Word formatting toolbar. Header/footer text is preserved in the file but is not part of the editable main-body analysis. Mixed bold/italic runs are retained mechanically; review styling around rewritten words. Tracked-change documents should be finalized in Word before uploading.
+Paragraphs with Word fields, tracked changes, tabs, line breaks, content controls and certain embedded objects are read-only to avoid damaging them. The viewport only enables an editor when its rendered text exactly matches the source paragraph; unsupported rendering remains protected. The browser preview is approximate and may use substitute fonts when an original font is unavailable. The editor changes existing paragraph text; it does not add/reorder sections or offer a full Word formatting toolbar. Header/footer text is preserved in the file but is not part of the editable main-body analysis. Mixed bold/italic runs are retained mechanically; review styling around rewritten words. Tracked-change documents should be finalized in Word before uploading.
 
-**PDF uploads are supported for text extraction and analysis.** PDF is not a reliable round-trip editing format. Edited PDF resumes export to a new clean DOCX layout; the app does not claim to preserve their original design. The original PDF is always downloadable. Scanned/image-only PDFs need OCR before import. Password-protected files must be unlocked first. Legacy `.doc` files must be saved as `.docx` in Word before upload.
+**PDF uploads are supported for text extraction and analysis.** The document viewport can display the original PDF pages, and switching to the editable draft shows the rebuilt Word layout. PDF is not a reliable round-trip editing format. Edited PDF resumes export to a new clean DOCX layout; the app does not claim to preserve their original design. The original PDF is always downloadable. Scanned/image-only PDFs need OCR before import. Password-protected files must be unlocked first. Legacy `.doc` files must be saved as `.docx` in Word before upload.
 
 **PDF export:** Print / PDF produces a clean text layout using your browser’s print dialog. For a PDF that matches an edited DOCX’s Word formatting, open the downloaded DOCX in Word and use its PDF export. Print / PDF does not reproduce the DOCX layout.
 
@@ -91,7 +95,10 @@ Changing the resume or role marks existing analysis and prep as outdated. Rewrit
 
 ## Project layout
 
-- `src/main.jsx` — workflow UI, editing, snapshots, restore, settings and downloads.
+- `src/main.jsx` — workflow UI, snapshots, restore, settings and downloads.
+- `src/ResumeWorkspace.jsx` — document-centered role, analysis and recommendation panels.
+- `src/DocumentViewport.jsx` — formatted resume rendering, safe in-place editing, original PDF canvas view and zoom.
+- `src/document-markers.js` — disposable preview markers that map rendered paragraphs to stable Word XML IDs. The original and exported files do not contain these markers.
 - `src/documents.js` — DOCX/PDF import, conservative Word XML patching, export and print.
 - `src/storage.js` — IndexedDB and portable backups.
 - `src/api.js` — authenticated gateway client and response validation.
@@ -107,7 +114,7 @@ Changing the resume or role marks existing analysis and prep as outdated. Rewrit
 
 ## Validation status
 
-The production build and all 28 automated document and authentication tests pass on Node 22. Local browser tests with simulated GitHub identities verified owner-only shared-key controls, personal-key controls for other accounts, separate local libraries, sign-out and clearing keys on refresh. Live GitHub OAuth verification remains pending backend deployment. A dependency audit reports no known vulnerabilities. Browser checks covered the example workflow, accepting an edit, saving a named version, restoring the baseline with an automatic snapshot, study-pack generation, Word preview, DOCX download and re-upload. A text-based PDF upload was verified to extract its four paragraphs correctly. Live OpenAI behavior requires your API key; no live paid requests were made during development. The GitHub Pages workflow builds and publishes the frontend. Worker deployment and live OpenAI verification still require your own backend setup and API key.
+The production build and all 32 automated document, preview-mapping and authentication tests pass on Node 22. Local browser tests with simulated GitHub identities verified owner-only shared-key controls, personal-key controls for other accounts, separate local libraries, sign-out and clearing keys on refresh. Live GitHub OAuth verification remains pending backend deployment. A dependency audit reports no known vulnerabilities. Browser checks covered the example workflow, accepting an edit, saving a named version, restoring the baseline with an automatic snapshot, study-pack generation, Word preview, DOCX download and re-upload. A text-based PDF upload was verified to extract its four paragraphs correctly. The document-first UI was checked with a styled DOCX containing bold and italic runs, bullets, colors and a table; a manual edit retained the bold run. Recommendation preview/cancel and direct application were verified without mutating the baseline. Live OpenAI behavior requires your API key; no live paid requests were made during development. The GitHub Pages workflow builds and publishes the frontend. Worker deployment and live OpenAI verification still require your own backend setup and API key.
 
 ## Official references
 

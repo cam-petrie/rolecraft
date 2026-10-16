@@ -45,6 +45,7 @@ import { signature, applyRewrite } from "../shared/contracts.js";
 import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/manrope";
 import "./styles.css";
+import ResumeWorkspace from "./ResumeWorkspace.jsx";
 import { AuthProvider, useAuth, AccountStatus, AuthPanel } from "./auth.jsx";
 const steps = [
   {
@@ -280,6 +281,7 @@ function App() {
       await saveWorkspace(next);
       setItems((all) => [next, ...all]);
       setW(next);
+      setSelected("");
       setTab("workspace");
       setToast("Original resume locked as your baseline.");
     });
@@ -446,127 +448,119 @@ function App() {
   const selectedP = w?.paragraphs.find((p) => p.id === selected);
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            setTab("workspace");
-          }}
-        >
-          <span className="brand-mark">
-            <Braces size={23} />
-          </span>
-          rolecraft<span className="brand-dot">.</span>
-        </a>
-        <div className="workspace-label">YOUR APPLICATION WORKSPACE</div>
-        <nav aria-label="Main navigation">
-          {steps.map(({ id, title, icon: Icon }, i) => (
-            <button
-              key={id}
-              className={`nav-item ${tab === id ? "active" : ""}`}
-              onClick={() => setTab(id)}
-            >
-              <Icon size={18} />
-              <span>{title}</span>
-              {id === "history" && w?.versions.length > 0 ? (
-                <span className="nav-count">{w.versions.length}</span>
-              ) : tab === id ? (
-                <span className="active-dot" />
-              ) : null}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-divider" />
-        <div className="library-heading">
-          <span>RESUME LIBRARY</span>
-          <button
-            className="icon-btn"
-            aria-label="Upload another resume"
-            onClick={() => fileRef.current.click()}
-            disabled={!!busy}
-          >
-            <Plus size={17} />
-          </button>
-        </div>
-        <div className="library">
-          {items.length ? (
-            items.map((item) => (
-              <button
-                key={item.id}
-                className={`library-item ${w?.id === item.id ? "selected" : ""}`}
-                onClick={() => switchTo(item)}
-                disabled={!!busy}
-              >
-                <FileText size={16} />
-                <span>
-                  {item.filename.replace(/\.(docx|pdf)$/i, "")}
-                  <small>
-                    {item.kind === "demo"
-                      ? "Sample workspace"
-                      : item.role.company || "Personal resume"}
-                  </small>
-                </span>
-              </button>
-            ))
-          ) : (
-            <p className="muted small">Your resumes will appear here.</p>
-          )}
-        </div>
-        <div className="sidebar-bottom">
-          <div className="privacy-mini">
-            <ShieldCheck size={19} />
-            <div>
-              Your story stays yours.<small>Files saved in this browser.</small>
-            </div>
-          </div>
-          <button
-            className="nav-item"
-            onClick={() => {
-              setModal({ type: "settings" });
+      <main>
+        <header className="platform-header">
+          <a
+            className="brand"
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              setTab("workspace");
             }}
           >
-            <Settings size={18} />
-            <span>Settings & connection</span>
-          </button>
-          <div className="profile">
-            <span className="avatar">Y</span>
-            <div>
-              Your next chapter<small>One application at a time</small>
-            </div>
-          </div>
-        </div>
-      </aside>
-      <main>
-        <header className="topbar">
-          <div className="breadcrumb">
-            Application workspace <ChevronRight size={14} />
-            <span>{currentStep.title}</span>
-          </div>
-          <div className="topbar-right">
+            <span className="brand-mark">
+              <Braces size={21} />
+            </span>
+            rolecraft<span className="brand-dot">.</span>
+          </a>
+          <nav className="platform-nav" aria-label="Main navigation">
+            {steps.map(({ id, icon: Icon }, i) => (
+              <button
+                key={id}
+                className={tab === id ? "active" : ""}
+                onClick={() => setTab(id)}
+              >
+                <Icon size={15} />
+                <span>
+                  {
+                    [
+                      "Resume",
+                      "Role fit",
+                      "Refine",
+                      "Interview prep",
+                      "Versions",
+                    ][i]
+                  }
+                </span>
+                {id === "history" && w?.versions.length > 0 && (
+                  <small>{w.versions.length}</small>
+                )}
+              </button>
+            ))}
+          </nav>
+          <div className="platform-account">
             <span className="save-status">
               <span className={`status-dot ${saved ? "" : "pending"}`} />
-              {saved ? "Saved on this device" : "Saving…"}
+              {saved ? "Saved locally" : "Saving…"}
             </span>
-            <button
-              className="icon-btn mobile-settings"
-              aria-label="Settings"
-              onClick={() => {
-                setModal({ type: "settings" });
-              }}
-            >
-              <Settings size={19} />
-            </button>
             <AccountStatus
               beforeLeave={async () => {
                 if (w) await persist(w);
               }}
               onSettings={() => setModal({ type: "settings" })}
             />
+            <button
+              className="icon-btn"
+              aria-label="Settings & connection"
+              onClick={() => setModal({ type: "settings" })}
+            >
+              <Settings size={18} />
+            </button>
           </div>
         </header>
-        <div className="page">
+        <div className="application-bar">
+          <div className="application-picker">
+            <FileText size={15} />
+            <select
+              aria-label="Resume library"
+              value={w?.id || ""}
+              onChange={(e) => {
+                const next = items.find((item) => item.id === e.target.value);
+                if (next) switchTo(next);
+              }}
+              disabled={!!busy || !items.length}
+            >
+              <option value="" disabled>
+                Your resume library
+              </option>
+              {items.map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.filename}
+                  {item.kind === "demo" ? " · example" : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              className="text-button"
+              onClick={() => fileRef.current.click()}
+              disabled={!!busy}
+            >
+              <Plus size={14} />
+              Upload resume
+            </button>
+          </div>
+          <div className="application-actions">
+            <button
+              className="icon-btn"
+              aria-label="How your data is handled"
+              onClick={() => setModal({ type: "privacy" })}
+            >
+              <ShieldCheck size={16} />
+            </button>
+            {w && (
+              <Button
+                variant="primary"
+                icon={Download}
+                onClick={() => setModal({ type: "export" })}
+              >
+                Preview & export
+              </Button>
+            )}
+          </div>
+        </div>
+        <div
+          className={`page ${w && ["workspace", "analysis", "editor"].includes(tab) ? "resume-page" : "overview-page"}`}
+        >
           <div className="page-heading">
             <div>
               <div className="eyebrow">
@@ -595,28 +589,6 @@ function App() {
                         : "Keep what works. Explore what’s next. Your original is always here."}
               </p>
             </div>
-            {w && (
-              <Button
-                icon={Download}
-                variant="primary"
-                onClick={() => setModal({ type: "export" })}
-              >
-                Preview & export
-              </Button>
-            )}
-          </div>
-          <div className="stepper">
-            {steps.slice(0, 4).map((s, i) => (
-              <button
-                key={s.id}
-                onClick={() => setTab(s.id)}
-                className={tab === s.id ? "current" : ""}
-              >
-                <span className="step-num">{i + 1}</span>
-                <span>{s.short}</span>
-                {i < 3 && <span className="step-line" />}
-              </button>
-            ))}
           </div>
           {auth.authError && (
             <div className="notice error" role="alert">
@@ -676,7 +648,7 @@ function App() {
               }
             />
           ) : null}
-          {tab === "workspace" && (
+          {tab === "workspace" && !w && (
             <>
               <div className="workspace-grid">
                 <section className="card resume-card">
@@ -875,329 +847,73 @@ function App() {
               )}
             </>
           )}
-          {w &&
-            tab === "analysis" &&
-            (!w.analysis ? (
-              <Empty
-                icon={Target}
-                title="A clearer picture of your fit"
-                text="Add the complete job description, then let the hiring-manager review find your matches and screening risks."
-                action={
-                  <Button variant="primary" onClick={analyze} disabled={!!busy}>
-                    Analyze role fit <Sparkles size={16} />
-                  </Button>
-                }
-              />
-            ) : (
-              <>
-                {analysisStale && (
-                  <div className="notice warning">
-                    <AlertTriangle size={17} />
-                    <span>
-                      Your resume or role has changed. This score reflects the
-                      earlier draft.
-                    </span>
-                    <Button
-                      variant="subtle"
-                      onClick={analyze}
-                      disabled={!!busy}
-                    >
-                      Reanalyze
-                    </Button>
-                  </div>
-                )}
-                <div className="analysis-summary card">
-                  <div
-                    className="score-ring"
-                    style={{ "--score": w.analysis.data.score * 3.6 + "deg" }}
-                  >
-                    <div>
-                      <strong>{w.analysis.data.score}</strong>
-                      <span>OUT OF 100</span>
-                    </div>
-                  </div>
-                  <div className="verdict">
-                    <div className="eyebrow">HIRING MANAGER’S TAKE</div>
-                    <h2>
-                      {w.role.title || "Resume-to-role fit"}
-                      {w.role.company && <span> at {w.role.company}</span>}
-                    </h2>
-                    <p>{w.analysis.data.verdict}</p>
-                    <small>
-                      Subjective fit assessment · not an ATS score or hiring
-                      prediction
-                    </small>
-                  </div>
-                  <Button icon={Sparkles} onClick={analyze} disabled={!!busy}>
-                    Run again
-                  </Button>
-                </div>
-                <div className="two-col">
-                  <section className="card evidence-card">
-                    <div className="card-heading">
-                      <CheckCircle2 size={20} className="teal" />
-                      <h2>Your 5 strongest matches</h2>
-                    </div>
-                    {w.analysis.data.matches.map((m, i) => (
-                      <div className="evidence-item" key={i}>
-                        <span className="list-num">0{i + 1}</span>
-                        <div>
-                          <h3>{m.title}</h3>
-                          <blockquote>“{m.evidence}”</blockquote>
-                          <p>
-                            <strong>Matches:</strong> {m.requirement}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </section>
-                  <section className="card evidence-card">
-                    <div className="card-heading">
-                      <AlertTriangle size={20} className="amber" />
-                      <h2>5 gaps that could screen you out</h2>
-                    </div>
-                    {w.analysis.data.gaps.map((m, i) => (
-                      <div className="evidence-item" key={i}>
-                        <span className="list-num amber">0{i + 1}</span>
-                        <div>
-                          <h3>{m.title}</h3>
-                          <p>{m.reason}</p>
-                          <div className="action-note">{m.action}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </section>
-                </div>
-                <div className="next-strip">
-                  <div>
-                    <PenLine size={23} />
-                    <div>
-                      <h3>Three bullets worth a second look.</h3>
-                      <p>
-                        Review suggested rewrites in the studio. Nothing changes
-                        until you accept it.
-                      </p>
-                    </div>
-                  </div>
-                  <Button variant="primary" onClick={() => setTab("editor")}>
-                    Refine your resume <ArrowRight size={16} />
-                  </Button>
-                </div>
-              </>
-            ))}
-          {w && tab === "editor" && (
-            <>
-              <div className="studio-bar">
-                <div>
-                  <Pill kind="green">{edits} paragraphs edited</Pill>
-                  <span className="muted small">
-                    Original baseline protected
-                  </span>
-                </div>
-                <div>
-                  <Button
-                    icon={RotateCcw}
-                    onClick={() => setModal({ type: "baseline" })}
-                  >
-                    Restore baseline
-                  </Button>
-                  <Button
-                    icon={Archive}
-                    onClick={() => {
-                      setVersionName(
-                        w.role.company
-                          ? `${w.role.company} · tailored`
-                          : "Tailored draft",
-                      );
-                      setModal({ type: "save" });
-                    }}
-                  >
-                    Save version
-                  </Button>
-                </div>
-              </div>
-              <div className="studio-grid">
-                <section className="card editor-document">
-                  <div className="card-heading">
-                    <h2>Resume content</h2>
-                    <Pill>Manual editing</Pill>
-                  </div>
-                  <p className="editor-help">
-                    Click a paragraph to edit. Word styling is retained on
-                    export; this view shows text. Complex Word fields are
-                    read-only.
-                  </p>
-                  {w.kind === "pdf" && (
-                    <div className="notice warning">
-                      PDF text is extracted into editable lines. Edited exports
-                      use a new layout. Use DOCX for stronger formatting
-                      retention.
-                    </div>
-                  )}
-                  <div className="paragraph-list">
-                    {w.paragraphs.map((p, i) => (
-                      <div
-                        className={`paragraph ${selected === p.id ? "focused" : ""} ${p.text !== w.baseline[i]?.text ? "changed" : ""}`}
-                        key={p.id}
-                      >
-                        <textarea
-                          aria-label={`Resume paragraph ${i + 1}`}
-                          value={p.text}
-                          maxLength={12000}
-                          readOnly={!p.editable}
-                          rows={Math.max(1, Math.ceil(p.text.length / 70))}
-                          onFocus={() => setSelected(p.id)}
-                          onChange={(e) =>
-                            update((old) => ({
-                              ...old,
-                              paragraphs: old.paragraphs.map((x) =>
-                                x.id === p.id
-                                  ? {
-                                      ...x,
-                                      text: e.target.value.replace(
-                                        /[\r\n]/g,
-                                        " ",
-                                      ),
-                                    }
-                                  : x,
-                              ),
-                            }))
-                          }
-                        />
-                        {!p.editable && (
-                          <small>Complex content · protected</small>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </section>
-                <aside className="suggestion-column">
-                  <div className="card suggestion-intro">
-                    <Sparkles size={20} className="teal" />
-                    <h2>A sharper way to say it</h2>
-                    <p>Grounded in your resume. Reviewed by you.</p>
-                    {selectedP?.editable && (
-                      <Button
-                        variant="subtle"
-                        onClick={() => {
-                          setDirection("");
-                          setModal({ type: "custom", paragraph: selectedP });
-                        }}
-                        disabled={!!busy}
-                      >
-                        Request edit for selected paragraph{" "}
-                        <ArrowUpRight size={14} />
-                      </Button>
-                    )}
-                  </div>
-                  {!w.analysis ? (
-                    <div className="card padded">
-                      <h3>Your suggestions will appear here.</h3>
-                      <p>
-                        Run a role-fit analysis to get three focused rewrites.
-                      </p>
-                      <Button
-                        variant="primary"
-                        onClick={analyze}
-                        disabled={!!busy}
-                      >
-                        Analyze role fit
-                      </Button>
-                    </div>
-                  ) : (
-                    w.analysis.data.rewrites.map((r, i) => {
-                      const status = w.decisions?.[i];
-                      const unchanged =
-                        w.paragraphs.find((p) => p.id === r.paragraphId)
-                          ?.text === r.before;
-                      return (
-                        <div className="card suggestion" key={i}>
-                          <div className="row spread">
-                            <span className="eyebrow">SUGGESTION 0{i + 1}</span>
-                            {status && (
-                              <Pill kind={status === "accepted" ? "green" : ""}>
-                                {status}
-                              </Pill>
-                            )}
-                          </div>
-                          <div className="diff before">
-                            <span>CURRENT AT ANALYSIS</span>
-                            <p>{r.before}</p>
-                          </div>
-                          <div className="diff after">
-                            <span>SUGGESTED REWRITE</span>
-                            <p>{r.after}</p>
-                          </div>
-                          <p className="reason">{r.reason}</p>
-                          {!status && (
-                            <>
-                              <div className="row">
-                                <Button
-                                  variant="primary"
-                                  icon={Check}
-                                  onClick={() => accept(r, i)}
-                                  disabled={!unchanged || !!busy}
-                                >
-                                  Accept edit
-                                </Button>
-                                <Button
-                                  onClick={() => {
-                                    setDirection("");
-                                    setModal({
-                                      type: "alternative",
-                                      rewrite: r,
-                                      index: i,
-                                    });
-                                  }}
-                                  disabled={!!busy}
-                                >
-                                  Try another
-                                </Button>
-                                <button
-                                  className="icon-btn"
-                                  aria-label={`Dismiss suggestion ${i + 1}`}
-                                  onClick={() =>
-                                    update((old) => ({
-                                      ...old,
-                                      decisions: {
-                                        ...old.decisions,
-                                        [i]: "dismissed",
-                                      },
-                                    }))
-                                  }
-                                >
-                                  <X size={17} />
-                                </button>
-                              </div>
-                              {!unchanged && (
-                                <small className="amber">
-                                  Source changed. Request an alternative to
-                                  refresh this suggestion.
-                                </small>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      );
+          {w && ["workspace", "analysis", "editor"].includes(tab) && (
+            <ResumeWorkspace
+              w={w}
+              tab={tab}
+              busy={!!busy}
+              selected={selected}
+              onSelect={setSelected}
+              onEdit={(id, text) =>
+                update((old) => ({
+                  ...old,
+                  paragraphs: old.paragraphs.map((p) =>
+                    p.id === id && p.editable ? { ...p, text } : p,
+                  ),
+                }))
+              }
+              onAnalyze={analyze}
+              onAccept={accept}
+              onAlternative={(rewrite, index) => {
+                setDirection("");
+                setModal({ type: "alternative", rewrite, index });
+              }}
+              onDismiss={(index) =>
+                update((old) => ({
+                  ...old,
+                  decisions: { ...old.decisions, [index]: "dismissed" },
+                }))
+              }
+              onCustom={(paragraph) => {
+                setDirection("");
+                setModal({ type: "custom", paragraph });
+              }}
+              onSaveVersion={() => {
+                setVersionName(
+                  w.role.company
+                    ? `${w.role.company} · tailored`
+                    : "Tailored draft",
+                );
+                setModal({ type: "save" });
+              }}
+              onRestore={() => setModal({ type: "baseline" })}
+              onTab={setTab}
+              roleForm={
+                <RoleForm
+                  w={w}
+                  update={update}
+                  disabled={!!busy}
+                  onImport={() =>
+                    action("Importing job description", async () => {
+                      if (!config.endpoint)
+                        throw new Error(
+                          "Connect your gateway in Settings to import job links, or paste the description.",
+                        );
+                      if (!w.role.url)
+                        throw new Error("Paste a job listing URL first.");
+                      const result = await gateway(config, "/job", {
+                        url: w.role.url,
+                      });
+                      update((old) => ({
+                        ...old,
+                        role: { ...old.role, text: result.text },
+                      }));
+                      setToast("Job text imported. Review it before analysis.");
                     })
-                  )}
-                </aside>
-              </div>
-              <div className="next-strip">
-                <div>
-                  <GraduationCap size={23} />
-                  <div>
-                    <h3>Ready to talk about your experience?</h3>
-                    <p>
-                      Use this draft to build your interview preparation pack.
-                    </p>
-                  </div>
-                </div>
-                <Button variant="primary" onClick={() => setTab("prep")}>
-                  Go to interview prep <ArrowRight size={16} />
-                </Button>
-              </div>
-            </>
+                  }
+                />
+              }
+            />
           )}
           {w &&
             tab === "prep" &&
