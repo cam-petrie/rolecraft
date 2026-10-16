@@ -86,7 +86,9 @@ The server deliberately imports only allowlisted job-host domains and validates 
 
 ## Push to GitHub and publish Pages
 
-The project has not been pushed or deployed. Create an empty GitHub repository, then run these commands **from this project folder** with your own repository URL:
+Project repository: [cam-petrie/rolecraft](https://github.com/cam-petrie/rolecraft). The Pages URL is `https://cam-petrie.github.io/rolecraft/`. The OpenAI gateway is deployed separately.
+
+To publish a separate copy under another account, create an empty GitHub repository, then run these commands **from this project folder** with your own repository URL:
 
 ```bash
 git init
@@ -136,7 +138,7 @@ Changing the resume or role marks existing analysis and prep as outdated. Rewrit
 
 ## Validation status
 
-The production build and all 16 automated core tests pass on Node 22. A dependency audit reports no known vulnerabilities. Browser checks covered the example workflow, accepting an edit, saving a named version, restoring the baseline with an automatic snapshot, study-pack generation, Word preview, DOCX download and re-upload. A text-based PDF upload was verified to extract its four paragraphs correctly. Live OpenAI behavior requires your API key; no live paid requests were made during development. GitHub Actions and Worker deployment require your accounts and have not been run from this workspace.
+The production build and all 16 automated core tests pass on Node 22. A dependency audit reports no known vulnerabilities. Browser checks covered the example workflow, accepting an edit, saving a named version, restoring the baseline with an automatic snapshot, study-pack generation, Word preview, DOCX download and re-upload. A text-based PDF upload was verified to extract its four paragraphs correctly. Live OpenAI behavior requires your API key; no live paid requests were made during development. The GitHub Pages workflow builds and publishes the frontend. Worker deployment and live OpenAI verification still require your own backend setup and API key.
 
 ## Official references
 
