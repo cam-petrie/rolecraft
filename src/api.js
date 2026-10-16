@@ -4,27 +4,62 @@ import {
   prepSchema,
   assertEvidence,
 } from "../shared/contracts.js";
-export async function gateway(config, path, body) {
-  const endpoint = new URL(config.endpoint);
+export function normalizeEndpoint(value) {
+  const u = new URL(value);
   if (
-    endpoint.protocol !== "https:" &&
-    !["localhost", "127.0.0.1"].includes(endpoint.hostname)
+    u.protocol !== "https:" &&
+    !(u.protocol === "http:" && ["localhost", "127.0.0.1"].includes(u.hostname))
   )
-    throw new Error("Use an HTTPS gateway URL.");
+    throw new Error(
+      "Use an HTTPS gateway URL, or localhost during development.",
+    );
+  if (u.username || u.password || u.search || u.hash || u.pathname !== "/")
+    throw new Error(
+      "Enter the gateway origin only, without a path, credentials or query.",
+    );
+  return u.origin;
+}
+export async function gateway(config, path, body) {
+  const endpoint = normalizeEndpoint(config.endpoint);
   if (!config.token)
     throw new Error(
-      "Add your gateway access token in Settings. This is not your OpenAI API key.",
+      "Sign in with GitHub in Settings to use AI or import job links.",
     );
-  const r = await fetch(endpoint.href.replace(/\/$/, "") + path, {
-    method: "POST",
-    signal: AbortSignal.timeout(135000),
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.token}`,
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await r.json();
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${config.token}`,
+  };
+  if (path === "/ai") {
+    headers["X-Key-Mode"] = config.keyMode || "personal";
+    if (config.keyMode !== "owner") {
+      if (!config.apiKey)
+        throw new Error(
+          "Add your own OpenAI API key in Settings for this session.",
+        );
+      headers["X-OpenAI-Key"] = config.apiKey;
+    }
+  }
+  let r;
+  try {
+    r = await fetch(endpoint + path, {
+      method: "POST",
+      signal: AbortSignal.timeout(135000),
+      headers,
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error(
+      "Could not reach the gateway. Check its URL and allowed-origin configuration, then try again.",
+    );
+  }
+  let data;
+  try {
+    data = await r.json();
+  } catch {
+    throw new Error(
+      "The gateway returned an invalid response. Check backend setup.",
+    );
+  }
   if (!r.ok) throw new Error(data.error || `Gateway error (${r.status})`);
   return data;
 }

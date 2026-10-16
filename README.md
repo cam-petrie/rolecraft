@@ -1,6 +1,6 @@
 # Rolecraft
 
-A private-by-default resume and interview workspace. The React frontend runs on **GitHub Pages**. A small authenticated backend calls **OpenAI**; the API key never goes into the browser or the GitHub Pages build.
+A private-by-default resume and interview workspace. The React frontend runs on **GitHub Pages**. A small authenticated backend calls **OpenAI**; the owner’s backend API key never goes into the browser or the GitHub Pages build. Other users may enter their own key for the current session.
 
 ## What is included
 
@@ -37,52 +37,18 @@ npm run preview
 
 `dist/` contains the static site. Relative asset URLs support both `username.github.io` and `username.github.io/repository/` hosting.
 
-## Connect OpenAI locally
+## GitHub sign-in and OpenAI access
 
-1. Copy `.env.example` to `.dev.vars` (already ignored by Git).
-2. Set `OPENAI_API_KEY` there. Never put it in a `VITE_*` variable, source file, frontend setting, repository secret used by the Pages build, or committed configuration.
-3. Generate a separate gateway token, for example with `openssl rand -hex 32`, and put it in `GATEWAY_TOKEN`. This token gates your personal backend; it is **not** your OpenAI key.
-4. Keep `ALLOWED_ORIGINS` matched to the Vite origin. If Vite chooses another port, update the value accordingly.
-5. Start the backend in a second terminal:
+Read [LOGIN_SETUP.md](./LOGIN_SETUP.md) for the complete backend activation steps.
 
-```bash
-npm run gateway
-```
+- Only verified GitHub account **cam-petrie** (immutable ID `90569344`) can use the backend’s optional OpenAI key.
+- Other users may sign in with GitHub and use their own OpenAI key for the current session. The backend never falls back to the owner’s key for other accounts.
+- Personal keys and signed sessions are held in memory only and cleared on refresh, expiry or sign-out. Personal keys are sent over HTTPS to the gateway for each AI request, so users must trust its operator. They are not intentionally logged or persisted.
+- GitHub login requests public identity without repository access, uses state and S256 PKCE, and verifies the account server-side.
+- Local resume libraries are separated by GitHub account ID. Earlier drafts remain in the signed-out local workspace and can be moved by backup/import. Browser-profile separation is still needed on shared devices; IndexedDB is not encrypted.
+- Anonymous users can edit locally and try the example. AI requests and job-link import require sign-in. The old shared-token login is removed.
 
-6. In the app, open **Settings & connection**. Enter `http://127.0.0.1:8787` as the gateway URL and the gateway token as the access token.
-7. Upload your resume, review its extracted text, add the full job description and click **Analyze role fit**.
-
-The gateway defaults to `gpt-4.1-mini`; set `OPENAI_MODEL` to a Responses-compatible model available to your account. This is a configurable starting value, not a claim that it is the newest model. The gateway requests JSON output, validates its shape, checks quoted evidence and rewrite source text, and rejects invalid or incomplete responses. It sends `store: false`; this does not override OpenAI’s retention policies. You remain responsible for reviewing factual accuracy before accepting edits.
-
-## Deploy the private gateway
-
-GitHub Pages serves static content and cannot keep an API key secret or execute backend requests itself. The included gateway targets Cloudflare Workers; the local Node adapter runs the same handler during development.
-
-Use Node 22+ for Wrangler. Create a Cloudflare account if needed, then:
-
-```bash
-npx wrangler login
-```
-
-Edit `wrangler.toml`:
-
-- Choose a unique Worker name if desired.
-- Set `ALLOWED_ORIGINS` to `https://YOUR-USERNAME.github.io` (origin only, with **no** repository path or trailing slash). Use your custom-domain origin instead if applicable.
-- Set your preferred `OPENAI_MODEL`.
-
-Set secrets through Wrangler’s interactive prompts:
-
-```bash
-npx wrangler secret put OPENAI_API_KEY
-npx wrangler secret put GATEWAY_TOKEN
-npx wrangler deploy
-```
-
-Enter the resulting HTTPS Worker origin and the gateway token in the published app’s Settings. Do **not** put those values in the frontend build. The gateway URL is saved locally; the token is kept in this tab’s session storage and may need to be entered again in a new browser session.
-
-This is a personal-use backend. CORS checks the allowed origin, and all calls require the private token. CORS alone is not authentication. Keep the token private, configure provider spending limits, and rotate the gateway token if it is exposed. There is no public signup or multi-user authorization system and no distributed rate limiter. For a shared service, add individual authentication and per-user quotas before opening access.
-
-The server deliberately imports only allowlisted job-host domains and validates redirects. Other job sites, login-only listings, expired listings and JavaScript-only pages may require pasted text. Imported text should be reviewed to remove navigation or unrelated page content.
+The gateway is not deployed yet. Create the Cloudflare account and dedicated GitHub OAuth App, configure the secrets, then follow the activation guide. Until then, sign-in and real AI requests are unavailable and fail closed.
 
 ## Push to GitHub and publish Pages
 
@@ -117,9 +83,9 @@ Imports are limited to 15 MB, PDF resumes to 30 pages, role descriptions to 60,0
 
 ## Storage and privacy
 
-All originals, drafts, roles, versions and interview packs live in this browser’s IndexedDB for this site origin. They are not synced between devices, browser profiles or deployments. Clearing browser data or using private browsing can remove them. Download backups regularly. Backups contain the original file and your personal data; keep them private.
+All originals, drafts, roles, versions and interview packs live in this browser’s IndexedDB for this site origin, separated by signed-in GitHub ID or the signed-out local workspace. They are not synced between devices, browser profiles or deployments. Clearing browser data or using private browsing can remove them. Download backups regularly. Backups contain the original file and your personal data; keep them private.
 
-AI requests send resume **text**, the job description and rewrite direction to your configured gateway and OpenAI. The original binary resume is not sent. Job import sends the listing URL to the gateway and fetches it from the job host. Fonts and document parsers are bundled locally; there are no analytics or external font requests.
+AI requests send resume **text**, the job description and rewrite direction to your configured gateway and OpenAI. Personal-key users also send their own API key to the gateway for that request; it is held in memory and not persisted. The original binary resume is not sent. Job import sends the listing URL to the gateway and fetches it from the job host. Fonts and document parsers are bundled locally; there are no analytics or external font requests.
 
 Changing the resume or role marks existing analysis and prep as outdated. Rewrites only apply while their original paragraph still matches. Restoring any version preserves the current draft in a new automatic snapshot and clears analysis/prep so you regenerate against the restored content. Backup imports are restored into a separate workspace and checked against the original file. Baseline and versions remain unaffected by everyday editing.
 
@@ -132,13 +98,16 @@ Changing the resume or role marks existing analysis and prep as outdated. Rewrit
 - `src/demo.js` — explicitly labeled sample data.
 - `shared/contracts.js` — request/response schemas, evidence checks and stale-edit guards.
 - `server/worker.js` — authenticated OpenAI gateway and job-link import.
+- `server/auth.js` — GitHub OAuth, PKCE, signed sessions and owner-only key selection.
+- `src/auth.jsx` — sign-in, personal-key controls and in-memory session handling.
+- `tests/auth.test.js` — owner isolation, key routing, forged/expired sessions and OAuth checks.
 - `server/local.js` — local Node development adapter.
 - `tests/core.test.js` — document preservation, stale edits, evidence checks, import safety and gateway tests.
 - `.github/workflows/pages.yml` — GitHub Pages deployment.
 
 ## Validation status
 
-The production build and all 16 automated core tests pass on Node 22. A dependency audit reports no known vulnerabilities. Browser checks covered the example workflow, accepting an edit, saving a named version, restoring the baseline with an automatic snapshot, study-pack generation, Word preview, DOCX download and re-upload. A text-based PDF upload was verified to extract its four paragraphs correctly. Live OpenAI behavior requires your API key; no live paid requests were made during development. The GitHub Pages workflow builds and publishes the frontend. Worker deployment and live OpenAI verification still require your own backend setup and API key.
+The production build and all 28 automated document and authentication tests pass on Node 22. Local browser tests with simulated GitHub identities verified owner-only shared-key controls, personal-key controls for other accounts, separate local libraries, sign-out and clearing keys on refresh. Live GitHub OAuth verification remains pending backend deployment. A dependency audit reports no known vulnerabilities. Browser checks covered the example workflow, accepting an edit, saving a named version, restoring the baseline with an automatic snapshot, study-pack generation, Word preview, DOCX download and re-upload. A text-based PDF upload was verified to extract its four paragraphs correctly. Live OpenAI behavior requires your API key; no live paid requests were made during development. The GitHub Pages workflow builds and publishes the frontend. Worker deployment and live OpenAI verification still require your own backend setup and API key.
 
 ## Official references
 

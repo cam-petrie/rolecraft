@@ -1,3 +1,4 @@
+import { oauth, authReady, authenticate, selectApiKey } from "./auth.js";
 import {
   requestSchema,
   analysisSchema,
@@ -211,7 +212,7 @@ export async function runAI(body, env, fetcher = fetch) {
   if (!r.ok) {
     if (r.status === 401)
       throw new Error(
-        "The gateway OpenAI API key is invalid. Check its server secret.",
+        "The selected OpenAI API key is invalid. Check your personal key or the owner’s server secret.",
       );
     if (r.status === 429)
       throw new Error(
@@ -241,16 +242,10 @@ export async function runAI(body, env, fetcher = fetch) {
     throw new Error("OpenAI rewrote a different paragraph. Please retry.");
   return assertEvidence(input.task, data, input.paragraphs, input.role);
 }
-async function secureEqual(a, b) {
-  const enc = new TextEncoder();
-  const [x, y] = await Promise.all([
-    crypto.subtle.digest("SHA-256", enc.encode(a)),
-    crypto.subtle.digest("SHA-256", enc.encode(b)),
-  ]);
-  return new Uint8Array(x).every((v, i) => v === new Uint8Array(y)[i]);
-}
 export default {
   async fetch(request, env) {
+    const loginResponse = await oauth(request, env);
+    if (loginResponse) return loginResponse;
     const origin = request.headers.get("Origin");
     const allowed = (env.ALLOWED_ORIGINS || "")
       .split(",")
@@ -261,26 +256,44 @@ export default {
     const cors = {
       "Access-Control-Allow-Origin": origin,
       Vary: "Origin",
-      "Access-Control-Allow-Headers": "Authorization, Content-Type",
+      "Access-Control-Allow-Headers":
+        "Authorization, Content-Type, X-Key-Mode, X-OpenAI-Key",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
     };
     if (request.method === "OPTIONS")
       return new Response(null, { status: 204, headers: cors });
     if (request.method !== "POST")
       return json({ error: "Use POST." }, 405, cors);
-    if (
-      !env.GATEWAY_TOKEN ||
-      env.GATEWAY_TOKEN.length < 24 ||
-      !env.OPENAI_API_KEY
-    )
-      return json({ error: "Gateway secrets are not configured." }, 503, cors);
-    if (
-      !(await secureEqual(
-        request.headers.get("Authorization") || "",
-        `Bearer ${env.GATEWAY_TOKEN}`,
-      ))
-    )
-      return json({ error: "Gateway access token is incorrect." }, 401, cors);
+    if (!authReady(env))
+      return json({ error: "Gateway login is not configured." }, 503, cors);
+    let user;
+    try {
+      user = await authenticate(request, env);
+    } catch (e) {
+      return json({ error: e.message }, 401, cors);
+    }
+    const path = new URL(request.url).pathname;
+    if (path === "/session")
+      return json(
+        {
+          user: { id: user.id, login: user.login },
+          owner: user.owner,
+          ownerKeyAvailable: user.owner && Boolean(env.OPENAI_API_KEY),
+          expiresAt: user.expiresAt,
+        },
+        200,
+        cors,
+      );
+    if (!["/job", "/ai"].includes(path))
+      return json({ error: "Endpoint not found." }, 404, cors);
+    let apiKey;
+    if (path === "/ai") {
+      try {
+        apiKey = selectApiKey(user, request, env);
+      } catch (e) {
+        return json({ error: e.message }, 403, cors);
+      }
+    }
     try {
       const raw = await limitedText(request, 300000);
       let body;
@@ -289,12 +302,13 @@ export default {
       } catch {
         return json({ error: "Invalid JSON request." }, 400, cors);
       }
-      const path = new URL(request.url).pathname;
       if (path === "/job")
         return json(await fetchJob(String(body.url || "")), 200, cors);
-      if (path !== "/ai")
-        return json({ error: "Endpoint not found." }, 404, cors);
-      return json(await runAI(body, env), 200, cors);
+      return json(
+        await runAI(body, { ...env, OPENAI_API_KEY: apiKey }),
+        200,
+        cors,
+      );
     } catch (e) {
       return json(
         {

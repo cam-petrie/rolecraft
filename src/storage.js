@@ -5,32 +5,48 @@ import {
   prepSchema,
 } from "../shared/contracts.js";
 import { importResume } from "./documents.js";
-let dbPromise;
-function database() {
-  if (!dbPromise)
-    dbPromise = new Promise((resolve, reject) => {
-      const r = indexedDB.open("rolecraft", 1);
-      r.onupgradeneeded = () =>
-        r.result.createObjectStore("workspaces", { keyPath: "id" });
-      r.onsuccess = () => resolve(r.result);
-      r.onerror = () => reject(r.error);
+const databases = new Map();
+export function workspaceDatabaseName(accountId) {
+  if (accountId === null || accountId === undefined) return "rolecraft";
+  if (!/^\d+$/.test(String(accountId)))
+    throw new Error("Invalid workspace account.");
+  return "rolecraft-account-" + accountId;
+}
+export function createWorkspaceStore(accountId = null) {
+  const name = workspaceDatabaseName(accountId);
+  function database() {
+    if (!databases.has(name))
+      databases.set(
+        name,
+        new Promise((resolve, reject) => {
+          const r = indexedDB.open(name, 1);
+          r.onupgradeneeded = () =>
+            r.result.createObjectStore("workspaces", { keyPath: "id" });
+          r.onsuccess = () => resolve(r.result);
+          r.onerror = () => {
+            databases.delete(name);
+            reject(r.error);
+          };
+        }),
+      );
+    return databases.get(name);
+  }
+  async function transact(mode, fn) {
+    const db = await database();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("workspaces", mode);
+      const request = fn(tx.objectStore("workspaces"));
+      tx.oncomplete = () => resolve(request.result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
     });
-  return dbPromise;
+  }
+  return {
+    listWorkspaces: () => transact("readonly", (s) => s.getAll()),
+    saveWorkspace: (w) => transact("readwrite", (s) => s.put(w)),
+    deleteWorkspace: (id) => transact("readwrite", (s) => s.delete(id)),
+  };
 }
-async function transact(mode, fn) {
-  const db = await database();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("workspaces", mode);
-    const request = fn(tx.objectStore("workspaces"));
-    tx.oncomplete = () => resolve(request.result);
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-  });
-}
-export const listWorkspaces = () => transact("readonly", (s) => s.getAll());
-export const saveWorkspace = (w) => transact("readwrite", (s) => s.put(w));
-export const deleteWorkspace = (id) =>
-  transact("readwrite", (s) => s.delete(id));
 export function toBackup(w) {
   const bytes = new Uint8Array(w.original);
   let raw = "";

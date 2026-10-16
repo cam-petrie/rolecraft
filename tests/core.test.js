@@ -1,3 +1,4 @@
+import { signToken } from "../server/auth.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
@@ -165,7 +166,8 @@ test("job import validates every redirect before fetching", async () => {
 test("gateway denies missing origins, unauthorized calls and unconfigured secrets", async () => {
   const env = {
     ALLOWED_ORIGINS: "https://example.github.io",
-    GATEWAY_TOKEN: "a".repeat(32),
+    SESSION_SECRET: "a".repeat(64),
+    OWNER_GITHUB_ID: "90569344",
     OPENAI_API_KEY: "not-a-real-key",
   };
   const req = (origin, token) =>
@@ -198,12 +200,27 @@ test("gateway denies missing origins, unauthorized calls and unconfigured secret
 test("gateway handles preflight and rejects malformed/oversized input", async () => {
   const env = {
     ALLOWED_ORIGINS: "http://localhost:5173",
-    GATEWAY_TOKEN: "a".repeat(32),
+    SESSION_SECRET: "a".repeat(64),
+    OWNER_GITHUB_ID: "90569344",
     OPENAI_API_KEY: "test",
   };
+  const now = Math.floor(Date.now() / 1000);
+  const token = await signToken(
+    {
+      type: "session",
+      sub: env.OWNER_GITHUB_ID,
+      login: "cam-petrie",
+      iat: now,
+      exp: now + 3600,
+      iss: "http://gateway",
+      aud: env.ALLOWED_ORIGINS,
+    },
+    env.SESSION_SECRET,
+  );
   const headers = {
     Origin: env.ALLOWED_ORIGINS,
-    Authorization: `Bearer ${env.GATEWAY_TOKEN}`,
+    Authorization: `Bearer ${token}`,
+    "X-Key-Mode": "owner",
   };
   assert.equal(
     (

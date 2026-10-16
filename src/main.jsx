@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowUpRight,
@@ -38,19 +38,14 @@ import {
   printResume,
   extractDocx,
 } from "./documents.js";
-import {
-  listWorkspaces,
-  saveWorkspace,
-  deleteWorkspace,
-  toBackup,
-  fromBackup,
-} from "./storage.js";
+import { createWorkspaceStore, toBackup, fromBackup } from "./storage.js";
 import { callAI, gateway } from "./api.js";
 import { createDemo, demoAnalysis, demoPrep } from "./demo.js";
 import { signature, applyRewrite } from "../shared/contracts.js";
 import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/manrope";
 import "./styles.css";
+import { AuthProvider, useAuth, AccountStatus, AuthPanel } from "./auth.jsx";
 const steps = [
   {
     id: "workspace",
@@ -186,18 +181,13 @@ function App() {
     [toast, setToast] = useState(""),
     [modal, setModal] = useState(null),
     [saved, setSaved] = useState(true);
-  const [config, setConfig] = useState(() => {
-    try {
-      return {
-        endpoint: localStorage.getItem("rolecraft.gateway") || "",
-        token: sessionStorage.getItem("rolecraft.token") || "",
-      };
-    } catch {
-      return { endpoint: "", token: "" };
-    }
-  });
-  const [draftConfig, setDraftConfig] = useState(config),
-    [selected, setSelected] = useState(""),
+  const auth = useAuth();
+  const config = auth.config;
+  const { listWorkspaces, saveWorkspace, deleteWorkspace } = useMemo(
+    () => createWorkspaceStore(auth.session?.user.id),
+    [auth.session?.user.id],
+  );
+  const [selected, setSelected] = useState(""),
     [versionName, setVersionName] = useState(""),
     [direction, setDirection] = useState(""),
     [filter, setFilter] = useState("all");
@@ -246,7 +236,10 @@ function App() {
       if (liveW.current) saveWorkspace(liveW.current).catch(() => {});
     };
     window.addEventListener("pagehide", handle);
-    return () => window.removeEventListener("pagehide", handle);
+    return () => {
+      window.removeEventListener("pagehide", handle);
+      if (liveW.current) saveWorkspace(liveW.current).catch(() => {});
+    };
   }, []);
   useEffect(() => {
     if (!toast) return;
@@ -531,7 +524,6 @@ function App() {
           <button
             className="nav-item"
             onClick={() => {
-              setDraftConfig(config);
               setModal({ type: "settings" });
             }}
           >
@@ -561,13 +553,17 @@ function App() {
               className="icon-btn mobile-settings"
               aria-label="Settings"
               onClick={() => {
-                setDraftConfig(config);
                 setModal({ type: "settings" });
               }}
             >
               <Settings size={19} />
             </button>
-            <span className="avatar small-avatar">Y</span>
+            <AccountStatus
+              beforeLeave={async () => {
+                if (w) await persist(w);
+              }}
+              onSettings={() => setModal({ type: "settings" })}
+            />
           </div>
         </header>
         <div className="page">
@@ -622,6 +618,18 @@ function App() {
               </button>
             ))}
           </div>
+          {auth.authError && (
+            <div className="notice error" role="alert">
+              <AlertTriangle size={18} />
+              <span>{auth.authError}</span>
+              <button
+                className="text-button"
+                onClick={() => setModal({ type: "settings" })}
+              >
+                Account settings
+              </button>
+            </div>
+          )}
           {error && (
             <div role="alert" className="notice error">
               <AlertTriangle size={18} />
@@ -1555,99 +1563,11 @@ function App() {
         >
           {modal.type === "settings" && (
             <div className="modal-body">
-              <p>
-                GitHub Pages hosts your workspace. A private gateway connects it
-                to OpenAI without publishing your API key.
-              </p>
-              <label>
-                Gateway URL
-                <input
-                  placeholder="https://rolecraft-gateway.you.workers.dev"
-                  value={draftConfig.endpoint}
-                  onChange={(e) =>
-                    setDraftConfig({ ...draftConfig, endpoint: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Gateway access token
-                <input
-                  type="password"
-                  autoComplete="off"
-                  placeholder="Your private gateway token — not an OpenAI key"
-                  value={draftConfig.token}
-                  onChange={(e) =>
-                    setDraftConfig({ ...draftConfig, token: e.target.value })
-                  }
-                />
-                <small>
-                  Kept for this tab’s session only. Never committed to GitHub.
-                </small>
-              </label>
-              <div className="notice info">
-                <ShieldCheck size={17} />
-                <span>
-                  Analysis sends resume text and the job description to your
-                  gateway and OpenAI. Original files stay in this browser.
-                </span>
-              </div>
-              <div className="row">
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    try {
-                      if (draftConfig.endpoint) {
-                        const u = new URL(draftConfig.endpoint);
-                        if (
-                          u.protocol !== "https:" &&
-                          !["localhost", "127.0.0.1"].includes(u.hostname)
-                        )
-                          throw new Error(
-                            "Use HTTPS, or localhost for development.",
-                          );
-                        if (
-                          u.username ||
-                          u.password ||
-                          u.search ||
-                          u.hash ||
-                          u.pathname !== "/"
-                        )
-                          throw new Error(
-                            "Enter the gateway origin only, without a path, credentials or query.",
-                          );
-                      }
-                      localStorage.setItem(
-                        "rolecraft.gateway",
-                        draftConfig.endpoint.trim().replace(/\/$/, ""),
-                      );
-                      sessionStorage.setItem(
-                        "rolecraft.token",
-                        draftConfig.token,
-                      );
-                      setConfig({
-                        ...draftConfig,
-                        endpoint: draftConfig.endpoint
-                          .trim()
-                          .replace(/\/$/, ""),
-                      });
-                      setModal(null);
-                      setToast("Gateway settings saved.");
-                    } catch (e) {
-                      setError(e.message);
-                      setModal(null);
-                    }
-                  }}
-                >
-                  Save connection
-                </Button>
-                <Button
-                  onClick={() => {
-                    setDraftConfig({ endpoint: "", token: "" });
-                  }}
-                >
-                  Clear fields
-                </Button>
-              </div>
+              <AuthPanel
+                beforeLeave={async () => {
+                  if (w) await persist(w);
+                }}
+              />
               <div className="modal-divider" />
               <h3>Workspace tools</h3>
               <div className="row wrap">
@@ -1904,17 +1824,20 @@ function App() {
               <h3>Local by default</h3>
               <p>
                 Resumes, originals, drafts, job descriptions and interview packs
-                are saved in this browser’s IndexedDB. They are not synced to
-                GitHub or another device. Clearing site data removes them.
+                are saved in this browser’s IndexedDB, separated by GitHub
+                account or the signed-out local workspace. They are not synced
+                to GitHub or another device. Clearing site data removes them.
                 Download backups regularly; backups contain personal information
                 and should be kept private.
               </p>
               <h3>When you ask for AI help</h3>
               <p>
                 Resume text and the role description are sent to your configured
-                gateway and OpenAI. Your original DOCX/PDF is not sent. The
-                gateway requests non-stored API responses with store: false;
-                provider retention policies still apply.
+                gateway and OpenAI. Personal-key users also send their own key
+                to the gateway for each AI request; it is not saved. Your
+                original DOCX/PDF is not sent. The gateway requests non-stored
+                API responses with store: false; provider retention policies
+                still apply.
               </p>
               <h3>When you import a link</h3>
               <p>
@@ -2082,4 +2005,12 @@ function prepMarkdown(w) {
       .join("\n\n")
   );
 }
-createRoot(document.getElementById("root")).render(<App />);
+function AccountWorkspace() {
+  const { session } = useAuth();
+  return <App key={session?.user.id || "local"} />;
+}
+createRoot(document.getElementById("root")).render(
+  <AuthProvider>
+    <AccountWorkspace />
+  </AuthProvider>,
+);

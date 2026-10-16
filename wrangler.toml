@@ -3,6 +3,11 @@ main = "server/worker.js"
 compatibility_date = "2026-10-01"
 [vars]
 OPENAI_MODEL = "gpt-4.1-mini"
-# GitHub Pages origin only, without a repository path or trailing slash.
 ALLOWED_ORIGINS = "https://cam-petrie.github.io"
-# Set OPENAI_API_KEY and GATEWAY_TOKEN using wrangler secret put.
+FRONTEND_URL = "https://cam-petrie.github.io/rolecraft/"
+# Immutable GitHub account ID, verified from GitHub after OAuth login.
+OWNER_GITHUB_ID = "90569344"
+# Set GITHUB_CLIENT_ID to your dedicated Rolecraft OAuth App's public client ID.
+GITHUB_CLIENT_ID = ""
+# Set GITHUB_CLIENT_SECRET, SESSION_SECRET and optional owner OPENAI_API_KEY
+# through wrangler secret put. Never commit these secret values.
