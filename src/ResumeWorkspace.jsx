@@ -39,6 +39,16 @@ export default function ResumeWorkspace({
     setPreview(null);
     panelRef.current?.scrollTo(0, 0);
   }, [w.id, tab]);
+  useEffect(() => {
+    if (
+      preview &&
+      (!w.analysis ||
+        w.paragraphs.find((p) => p.id === preview.paragraphId)?.text !==
+          preview.before)
+    ) {
+      setPreview(null);
+    }
+  }, [w.paragraphs, w.analysis, preview]);
   const edits = w.paragraphs.filter(
     (p, i) => p.text !== w.baseline[i]?.text,
   ).length;
@@ -286,7 +296,10 @@ export default function ResumeWorkspace({
                     {selectedP.editable ? (
                       <button
                         className="text-button"
-                        onClick={() => onCustom(selectedP)}
+                        onClick={() => {
+                          setPreview(null);
+                          onCustom(selectedP);
+                        }}
                         disabled={busy}
                       >
                         <Sparkles size={13} />
@@ -371,7 +384,10 @@ export default function ResumeWorkspace({
                             <div className="recommendation-secondary">
                               <button
                                 className="text-button"
-                                onClick={() => onAlternative(r, i)}
+                                onClick={() => {
+                                  setPreview(null);
+                                  onAlternative(r, i);
+                                }}
                                 disabled={busy}
                               >
                                 Request another
