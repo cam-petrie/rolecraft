@@ -336,6 +336,8 @@ test("analysis schema restricts targets and job citations to supplied source dat
   await runAI({ task: "analyze", paragraphs: w.paragraphs, role: w.role }, { OPENAI_API_KEY: "test" }, async (_url, options) => {
     const schema = JSON.parse(options.body).text.format.schema;
     const rewrite = schema.properties.rewrites.items;
+    assert.equal(schema.properties.matches.items.properties.evidence, undefined);
+    assert.ok(schema.properties.matches.items.properties.paragraphId.enum.includes(w.paragraphs[0].id));
     assert.equal(rewrite.properties.before, undefined);
     assert.ok(!rewrite.properties.paragraphId.enum.includes(w.paragraphs[0].id));
     for (const quote of schema.properties.matches.items.properties.requirement.enum)
@@ -343,6 +345,31 @@ test("analysis schema restricts targets and job citations to supplied source dat
     const data = { ...demoAnalysis, matches: demoAnalysis.matches.map((m) => ({ ...m, requirement: schema.properties.matches.items.properties.requirement.enum[0] })) };
     return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify(data) }] }] });
   });
+});
+
+test("match and interview evidence comes from source IDs, including Unicode and protected text", async () => {
+  const w = createDemo();
+  w.paragraphs[0].text = "Unicode\u00a0quote\twith\nline breaks — and ‘quotes’.";
+  w.paragraphs[0].editable = false;
+  const first = w.paragraphs[0];
+  const response = (data) => async (_url, options) => {
+    const schema = JSON.parse(options.body).text.format.schema;
+    const field = data.matches ? "matches" : "mappings";
+    assert.equal(schema.properties[field].items.properties.evidence, undefined);
+    assert.ok(schema.properties[field].items.properties.paragraphId.enum.includes(first.id));
+    return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify(data) }] }] });
+  };
+  const analysis = { ...demoAnalysis, matches: demoAnalysis.matches.map(({ evidence, ...m }) => ({ ...m, paragraphId: first.id, requirement: w.role.text })) };
+  const result = await runAI({ task: "analyze", paragraphs: w.paragraphs, role: w.role }, { OPENAI_API_KEY: "test" }, response(analysis));
+  assert.ok(result.matches.every((m) => m.evidence === first.text));
+  const prep = demoPrep(w);
+  prep.mappings = prep.mappings.map(({ evidence, ...m }) => ({ ...m, paragraphId: first.id, requirement: w.role.text }));
+  const pack = await runAI({ task: "prep", paragraphs: w.paragraphs, role: w.role }, { OPENAI_API_KEY: "test" }, response(prep));
+  assert.ok(pack.mappings.every((m) => m.evidence === first.text));
+  analysis.matches[0].paragraphId = "missing";
+  await assert.rejects(() => runAI({ task: "analyze", paragraphs: w.paragraphs, role: w.role }, { OPENAI_API_KEY: "test" }, response(analysis)));
+  analysis.matches[0] = { ...analysis.matches[0], paragraphId: first.id, evidence: "Invented evidence" };
+  await assert.rejects(() => runAI({ task: "analyze", paragraphs: w.paragraphs, role: w.role }, { OPENAI_API_KEY: "test" }, response(analysis)), /evidence was not found/);
 });
 
 test("OpenAI errors classify request, model and billing failures without leaking upstream data", async () => {
