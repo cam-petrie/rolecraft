@@ -329,6 +329,22 @@ test("structured rewrites attach exact source bytes and reject unsafe targets an
   await assert.rejects(() => runAI({ ...input, task: "analyze" }, { OPENAI_API_KEY: "test" }, response({ ...demoAnalysis, rewrites: [suggestion, ...demoAnalysis.rewrites.slice(1)] })));
 });
 
+test("analysis schema restricts targets and job citations to supplied source data", async () => {
+  const w = createDemo();
+  w.paragraphs[0].editable = false;
+  const normalize = (s) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  await runAI({ task: "analyze", paragraphs: w.paragraphs, role: w.role }, { OPENAI_API_KEY: "test" }, async (_url, options) => {
+    const schema = JSON.parse(options.body).text.format.schema;
+    const rewrite = schema.properties.rewrites.items;
+    assert.equal(rewrite.properties.before, undefined);
+    assert.ok(!rewrite.properties.paragraphId.enum.includes(w.paragraphs[0].id));
+    for (const quote of schema.properties.matches.items.properties.requirement.enum)
+      assert.ok(normalize(w.role.text).includes(normalize(quote)));
+    const data = { ...demoAnalysis, matches: demoAnalysis.matches.map((m) => ({ ...m, requirement: schema.properties.matches.items.properties.requirement.enum[0] })) };
+    return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify(data) }] }] });
+  });
+});
+
 test("OpenAI errors classify request, model and billing failures without leaking upstream data", async () => {
   const w = createDemo();
   for (const [status, error, expected] of [

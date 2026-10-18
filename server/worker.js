@@ -88,6 +88,14 @@ function outputSchema(value, input, key = "") {
     return { type: "string", enum: targets.map((p) => p.id) };
   }
   if (key === "stage") return { type: "string", enum: ["screening", "technical"] };
+  if (key === "requirement") {
+    const parts = input.role.text.split(/(?<=[.!?;])\s+|\n+/).map((s) => s.trim()).filter(Boolean);
+    // Keep below OpenAI's large-enum limits, grouping adjacent source spans.
+    const width = Math.max(1, Math.ceil(parts.length / 200));
+    const quotes = [];
+    for (let i = 0; i < parts.length; i += width) quotes.push(parts.slice(i, i + width).join(" "));
+    return { type: "string", enum: [...new Set(quotes)] };
+  }
   if (key === "score") return { type: "integer", minimum: 0, maximum: 100 };
   return { type: "string" };
 }
