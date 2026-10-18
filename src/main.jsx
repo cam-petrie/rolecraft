@@ -160,7 +160,9 @@ function DocPreview({ w }) {
         <FileText size={15} />{" "}
         {w.kind === "docx"
           ? "Word layout preview · pagination may differ from Microsoft Word"
-          : "Rebuilt document preview · original PDF layout is not retained"}
+          : w.kind === "pdf"
+            ? "Styled PDF draft · compare with the original before submitting"
+            : "Document preview"}
       </div>
       {loading && (
         <p className="loading">
@@ -1336,7 +1338,9 @@ function App() {
                 <span>
                   {w.kind === "docx"
                     ? "Existing Word styles, tables and document structure are retained. Longer text can change line wrapping and pagination. Verify the final file in Word before applying."
-                    : "Edited PDF and sample resumes export as a newly formatted Word document. The original PDF layout cannot be retained through text edits."}
+                    : w.kind === "pdf"
+                      ? "PDF typography, colors, spacing, page size and simple columns are recovered for your editable draft and exports. Some fonts may substitute; graphics and exact pagination may differ. Compare with the original before submitting."
+                      : "Sample resumes export as a Word document."}
                 </span>
               </div>
               <div className="export-actions">
@@ -1350,9 +1354,12 @@ function App() {
                 </Button>
                 <Button
                   icon={FileText}
-                  onClick={() => printResume(w.paragraphs)}
+                  onClick={() =>
+                    action("Preparing styled PDF", () => printResume(w))
+                  }
+                  disabled={!!busy}
                 >
-                  Print / PDF in simple layout
+                  Print / Save styled PDF
                 </Button>
                 {w.kind !== "demo" && (
                   <Button
@@ -1373,9 +1380,10 @@ function App() {
                 )}
               </div>
               <p className="small muted">
-                Print / PDF creates a clean text layout. For a PDF matching your
-                Word formatting, open the downloaded DOCX in Word and export it
-                as PDF.
+                Print uses the styled document shown below. In the print dialog,
+                choose Save as PDF, disable browser headers and footers, and use
+                the source page size. For final pagination, check the DOCX in
+                Word.
               </p>
               <DocPreview w={w} />
             </div>

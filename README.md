@@ -79,9 +79,9 @@ Your site will normally be at `https://YOUR-USERNAME.github.io/rolecraft/`. The 
 
 Paragraphs with Word fields, tracked changes, tabs, line breaks, content controls and certain embedded objects are read-only to avoid damaging them. The viewport only enables an editor when its rendered text exactly matches the source paragraph; unsupported rendering remains protected. The browser preview is approximate and may use substitute fonts when an original font is unavailable. The editor changes existing paragraph text; it does not add/reorder sections or offer a full Word formatting toolbar. Header/footer text is preserved in the file but is not part of the editable main-body analysis. Mixed bold/italic runs are retained mechanically; review styling around rewritten words. Tracked-change documents should be finalized in Word before uploading.
 
-**PDF uploads are supported for text extraction and analysis.** The document viewport can display the original PDF pages, and switching to the editable draft shows the rebuilt Word layout. PDF is not a reliable round-trip editing format. Edited PDF resumes export to a new clean DOCX layout; the app does not claim to preserve their original design. The original PDF is always downloadable. Scanned/image-only PDFs need OCR before import. Password-protected files must be unlocked first. Legacy `.doc` files must be saved as `.docx` in Word before upload.
+**PDF uploads retain an editable interpretation of their original design.** Text-based PDFs are inspected locally for font families, weights, italics, sizes, colors, page dimensions, alignment, spacing and simple two-column structure. These styles are used by Refine, DOCX downloads and the export preview. Existing saved PDFs recover styling from their immutable original automatically, without replacing edits or versions. Inserted wording inherits adjacent run styling. PDF is still not a pixel-perfect round-trip format: unavailable fonts substitute, complex graphics/backgrounds are not reconstructed, and longer edits can reflow. Very pale text is darkened so it stays readable when a graphical background is not reconstructed. Use View original to compare before submitting. Scanned/image-only PDFs still need OCR; password-protected PDFs must be unlocked first.
 
-**PDF export:** Print / PDF produces a clean text layout using your browser’s print dialog. For a PDF that matches an edited DOCX’s Word formatting, open the downloaded DOCX in Word and use its PDF export. Print / PDF does not reproduce the DOCX layout.
+**PDF export:** Print / Save styled PDF renders the same styled DOCX used by the viewport, rather than the former plain-text print template. Disable browser headers/footers and select the source paper size in the browser print dialog. Word's PDF export remains useful for checking final pagination.
 
 Imports are limited to 15 MB, PDF resumes to 30 pages, role descriptions to 60,000 characters, and AI requests to 800 paragraphs. The AI needs at least three editable paragraphs for its three rewrites. Some unusually complex or long documents will require simplifying the source.
 
@@ -99,7 +99,9 @@ Changing the resume or role marks existing analysis and prep as outdated. Rewrit
 - `src/ResumeWorkspace.jsx` — document-centered role, analysis and recommendation panels.
 - `src/DocumentViewport.jsx` — formatted resume rendering, safe in-place editing, original PDF canvas view and zoom.
 - `src/document-markers.js` — disposable preview markers that map rendered paragraphs to stable Word XML IDs. The original and exported files do not contain these markers.
-- `src/documents.js` — DOCX/PDF import, conservative Word XML patching, export and print.
+- `src/documents.js` — DOCX/PDF import, conservative Word XML patching, export and styled print.
+- `src/pdf-layout.js` — local PDF font, color and geometry inspection with source-safe style recovery.
+- `src/pdf-docx.js` — styled editable PDF reconstruction, visual ordering and simple columns.
 - `src/storage.js` — IndexedDB and portable backups.
 - `src/api.js` — authenticated gateway client and response validation.
 - `src/demo.js` — explicitly labeled sample data.
@@ -114,7 +116,8 @@ Changing the resume or role marks existing analysis and prep as outdated. Rewrit
 
 ## Validation status
 
-The production build and all 32 automated document, preview-mapping and authentication tests pass on Node 22. Local browser tests with simulated GitHub identities verified owner-only shared-key controls, personal-key controls for other accounts, separate local libraries, sign-out and clearing keys on refresh. Live GitHub OAuth verification remains pending backend deployment. A dependency audit reports no known vulnerabilities. Browser checks covered the example workflow, accepting an edit, saving a named version, restoring the baseline with an automatic snapshot, study-pack generation, Word preview, DOCX download and re-upload. A text-based PDF upload was verified to extract its four paragraphs correctly. The document-first UI was checked with a styled DOCX containing bold and italic runs, bullets, colors and a table; a manual edit retained the bold run. Recommendation preview/cancel and direct application were verified without mutating the baseline. Live OpenAI behavior requires your API key; no live paid requests were made during development. The GitHub Pages workflow builds and publishes the frontend. Worker deployment and live OpenAI verification still require your own backend setup and API key.
+The production build and all 42 automated tests pass on Node 22. Coverage includes authentication and owner-only key routing, source-grounded AI outputs, Word run preservation, stale-edit guards, PDF font/color extraction, inherited styling, source markers, visual ordering, page dimensions and simple columns. Live GitHub OAuth and OpenAI analysis were verified against the deployed gateway. Browser QA compared single- and two-column styled PDFs with their originals, edited a paragraph in place, confirmed reflow without overlap, inspected the downloaded DOCX for the retained colors/fonts/table/edited text, and recovered styling for a PDF saved before this feature. The styled print document uses the same renderer; the final browser print dialog and Word pagination should be reviewed before submitting a resume. No AI calls were needed for PDF style recovery.
+
 
 ## Official references
 

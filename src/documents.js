@@ -1,6 +1,8 @@
 import JSZip from "jszip";
 import diff from "fast-diff";
 import { Document, Packer, Paragraph, TextRun } from "docx";
+import { readPdfLayout } from "./pdf-layout.js";
+import { exportStyledPdfDocx } from "./pdf-docx.js";
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const nodes = (e, name) => Array.from(e.getElementsByTagNameNS(W, name));
 function parse(xml) {
@@ -108,45 +110,7 @@ export async function importResume(file) {
       );
     paragraphs = extractDocx(xml);
   } else {
-    const pdfjs = await import("pdfjs-dist");
-    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
-      import.meta.url,
-    ).href;
-    const task = pdfjs.getDocument({
-      data: original.slice(0),
-      isEvalSupported: false,
-    });
-    const pdf = await task.promise;
-    try {
-      if (pdf.numPages > 30)
-        throw new Error("Please use a resume with 30 pages or fewer.");
-      paragraphs = [];
-      for (let n = 1; n <= pdf.numPages; n++) {
-        const content = await (await pdf.getPage(n)).getTextContent();
-        let line = "";
-        let y = null;
-        function flush() {
-          if (line.trim())
-            paragraphs.push({
-              id: `p${paragraphs.length}`,
-              text: line.trim(),
-              editable: true,
-            });
-          line = "";
-        }
-        for (const item of content.items) {
-          if (!("str" in item)) continue;
-          if (y !== null && Math.abs(item.transform[5] - y) > 3) flush();
-          line += (line && !line.endsWith(" ") ? " " : "") + item.str;
-          y = item.transform[5];
-          if (item.hasEOL) flush();
-        }
-        flush();
-      }
-    } finally {
-      await pdf.destroy();
-    }
+    ({ paragraphs } = await readPdfLayout(original));
   }
   if (paragraphs.map((p) => p.text).join("").length < 40)
     throw new Error(
@@ -181,6 +145,8 @@ export async function exportResume(
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
   }
+  if (workspace.kind === "pdf")
+    return exportStyledPdfDocx(workspace, paragraphs);
   const doc = new Document({
     sections: [
       {
@@ -216,22 +182,38 @@ export function download(blob, name) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
-export function printResume(paragraphs) {
+export async function printResume(
+  workspace,
+  paragraphs = workspace.paragraphs,
+) {
+  const blob = await exportResume(workspace, paragraphs);
   const frame = document.createElement("iframe");
   frame.style.cssText = "position:fixed;width:0;height:0;border:0";
   document.body.append(frame);
   const d = frame.contentDocument;
   d.open();
   d.write(
-    "<!doctype html><html><head><title>Resume</title><style>@page{size:letter;margin:18mm}body{font:11pt Calibri,Arial,sans-serif;color:#111}p{margin:0 0 9pt;white-space:pre-wrap}p:first-child{font-size:20pt;font-weight:bold}</style></head><body></body></html>",
+    "<!doctype html><html><head><title>Resume</title></head><body></body></html>",
   );
   d.close();
-  for (const p of paragraphs) {
-    const el = d.createElement("p");
-    el.textContent = p.text;
-    d.body.append(el);
+  try {
+    const { renderAsync } = await import("docx-preview");
+    await renderAsync(blob, d.body, undefined, {
+      inWrapper: true,
+      breakPages: true,
+      useBase64URL: true,
+      renderAltChunks: false,
+    });
+    const style = d.createElement("style");
+    style.textContent =
+      "@page{margin:0}html,body{margin:0!important;padding:0!important}.docx-wrapper{padding:0!important;background:white!important}.docx-wrapper>section.docx{box-shadow:none!important;margin:0!important;break-after:page}.docx-wrapper>section.docx:last-child{break-after:auto}";
+    d.head.append(style);
+    await d.fonts.ready;
+    frame.contentWindow.focus();
+    frame.contentWindow.print();
+    setTimeout(() => frame.remove(), 60000);
+  } catch (e) {
+    frame.remove();
+    throw e;
   }
-  frame.contentWindow.focus();
-  frame.contentWindow.print();
-  setTimeout(() => frame.remove(), 60000);
 }

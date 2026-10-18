@@ -44,8 +44,9 @@ function OriginalPdf({ original }) {
           canvas.height = viewport.height;
           canvas.setAttribute("aria-label", `Original PDF page ${i}`);
           canvas.setAttribute("role", "img");
-          canvas.style.width = viewport.width / 1.4 + "px";
-          canvas.style.height = viewport.height / 1.4 + "px";
+          // PDF geometry is in points; Word previews use CSS pixels (96 / 72).
+          canvas.style.width = ((viewport.width / 1.4) * 4) / 3 + "px";
+          canvas.style.height = ((viewport.height / 1.4) * 4) / 3 + "px";
           if (cancelled) break;
           target.append(canvas);
           const task = page.render({
@@ -146,9 +147,36 @@ export default function DocumentViewport({
           w.kind === "docx"
             ? renderedParagraphs
             : renderedParagraphs.map((p, i) => ({ ...p, id: "p" + i }));
+        const pdfMarkers = new Map();
+        if (w.kind === "pdf") {
+          const doc = new DOMParser().parseFromString(xml, "application/xml");
+          const ns =
+            "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+          Array.from(doc.getElementsByTagNameNS(ns, "p")).forEach(
+            (el, index) => {
+              for (const bookmark of el.getElementsByTagNameNS(
+                ns,
+                "bookmarkStart",
+              )) {
+                const name = bookmark.getAttributeNS(ns, "name");
+                if (name?.startsWith("rolecraft_source_"))
+                  pdfMarkers.set(name.slice(17), "p" + index);
+              }
+            },
+          );
+        }
         zip.file(
           "word/document.xml",
-          markPreviewParagraphs(xml, sourceIds, prefix),
+          markPreviewParagraphs(
+            xml,
+            w.kind === "pdf"
+              ? renderedParagraphs.map((p) => ({
+                  ...p,
+                  id: pdfMarkers.get(p.id),
+                }))
+              : sourceIds,
+            prefix,
+          ),
         );
         const bytes = await zip.generateAsync({ type: "arraybuffer" });
         const { renderAsync } = await import("docx-preview");
@@ -169,7 +197,14 @@ export default function DocumentViewport({
         let count = 0;
         renderedParagraphs.forEach((p, i) => {
           const marker = target.querySelector(
-            '[id="' + prefix + (w.kind === "docx" ? p.id : "p" + i) + '"]',
+            '[id="' +
+              prefix +
+              (w.kind === "docx"
+                ? p.id
+                : w.kind === "pdf"
+                  ? pdfMarkers.get(p.id)
+                  : "p" + i) +
+              '"]',
           );
           const el = marker?.closest("p");
           if (!el) return;
@@ -379,7 +414,7 @@ export default function DocumentViewport({
         <div className="pdf-layout-notice">
           {original
             ? "Original PDF · switch to the draft to edit."
-            : "PDF draft · text edits use a rebuilt Word layout; the original PDF remains protected."}
+            : "PDF draft · typography, colors, spacing and simple columns recovered from the original. Check View original; complex graphics and exact pagination may differ."}
         </div>
       )}
       <div className="paper-stage" ref={stage}>
