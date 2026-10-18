@@ -204,20 +204,37 @@ export async function runAI(body, env, fetcher = fetch) {
         task +
         "\nRequired JSON shape:\n" +
         JSON.stringify(shapes[input.task]),
-      input: JSON.stringify(input),
+      // JSON mode validates the input messages for an explicit JSON instruction.
+      // Keep this in the conversation, rather than only top-level instructions.
+      input: [
+        { role: "system", content: "Return the requested result as JSON." },
+        { role: "user", content: JSON.stringify(input) },
+      ],
       text: { format: { type: "json_object" } },
       max_output_tokens: 10000,
     }),
   });
   if (!r.ok) {
+    // Never expose upstream messages: they can echo keys or resume content.
+    const failure = await r.json().catch(() => null);
+    const code = failure?.error?.code;
+    const param = failure?.error?.param;
     if (r.status === 401)
       throw new Error(
         "The selected OpenAI API key is invalid. Check your personal key or the owner’s server secret.",
       );
     if (r.status === 429)
       throw new Error(
-        "OpenAI rate or spending limit reached. Try again later.",
+        code === "insufficient_quota"
+          ? "The selected OpenAI account has no available API quota. Check its API billing and spending limits."
+          : "OpenAI rate or spending limit reached. Try again later.",
       );
+    if (code === "model_not_found" || param === "model")
+      throw new Error("The gateway model is unavailable to the selected OpenAI key. Check OPENAI_MODEL and model access.");
+    if (r.status === 400 && param === "input" && /json/i.test(failure?.error?.message || ""))
+      throw new Error("OpenAI rejected the gateway’s JSON input format. The gateway needs an update.");
+    if (r.status === 400)
+      throw new Error("OpenAI rejected the gateway request format (400). Please report this gateway error; changing your API key may not fix it.");
     throw new Error(
       `OpenAI request failed (${r.status}). Check the gateway model setting.`,
     );

@@ -274,6 +274,9 @@ test("OpenAI request is non-stored and schema/evidence checked", async () => {
       assert.equal(body.store, false);
       assert.equal(body.model, "test-model");
       assert.equal(body.text.format.type, "json_object");
+      assert.equal(body.input[0].role, "system");
+      assert.match(body.input[0].content, /JSON/);
+      assert.equal(JSON.parse(body.input[1].content).task, "rewrite");
       return Response.json({
         status: "completed",
         output: [
@@ -302,6 +305,24 @@ test("incomplete OpenAI responses fail without applying anything", async () => {
       ),
     /did not complete/,
   );
+});
+
+test("OpenAI errors classify request, model and billing failures without leaking upstream data", async () => {
+  const w = createDemo();
+  for (const [status, error, expected] of [
+    [400, { param: "input", message: "input must contain json; private-resume sk-secret" }, /JSON input format/],
+    [400, { param: "model", message: "private-resume sk-secret" }, /model is unavailable/],
+    [400, { message: "private-resume sk-secret" }, /request format/],
+    [429, { code: "insufficient_quota", message: "private-resume sk-secret" }, /API quota/],
+    [400, null, /request format/],
+  ]) {
+    await assert.rejects(
+      () => runAI({ task: "analyze", paragraphs: w.paragraphs, role: w.role },
+        { OPENAI_API_KEY: "test" },
+        async () => error === null ? new Response("not JSON", { status }) : Response.json({ error }, { status })),
+      (e) => { assert.match(e.message, expected); assert.doesNotMatch(e.message, /private-resume|sk-secret/); return true; },
+    );
+  }
 });
 
 test("portable backup round-trips original data into a separate workspace", async () => {
