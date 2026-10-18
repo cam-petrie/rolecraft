@@ -8,6 +8,6 @@ FRONTEND_URL = "https://cam-petrie.github.io/rolecraft/"
 # Immutable GitHub account ID, verified from GitHub after OAuth login.
 OWNER_GITHUB_ID = "90569344"
 # Set GITHUB_CLIENT_ID to your dedicated Rolecraft OAuth App's public client ID.
-GITHUB_CLIENT_ID = ""
+GITHUB_CLIENT_ID = "Ov23li0uXOL53wDkeg31"
 # Set GITHUB_CLIENT_SECRET, SESSION_SECRET and optional owner OPENAI_API_KEY
 # through wrangler secret put. Never commit these secret values.
