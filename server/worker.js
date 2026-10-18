@@ -211,7 +211,7 @@ export async function runAI(body, env, fetcher = fetch) {
         { role: "user", content: JSON.stringify(input) },
       ],
       text: { format: { type: "json_object" } },
-      max_output_tokens: 10000,
+      max_output_tokens: input.task === "rewrite" ? 1500 : input.task === "analyze" ? 4000 : 8000,
     }),
   });
   if (!r.ok) {
@@ -223,11 +223,13 @@ export async function runAI(body, env, fetcher = fetch) {
       throw new Error(
         "The selected OpenAI API key is invalid. Check your personal key or the owner’s server secret.",
       );
+    if (r.status === 429 && /request too large/i.test(failure?.error?.message || ""))
+      throw new Error("OpenAI’s token rate limit is too low for this request. Shorten the resume or job description, or increase the model’s token-per-minute limit.");
     if (r.status === 429)
       throw new Error(
-        code === "insufficient_quota"
+        code === "insufficient_quota" || failure?.error?.type === "insufficient_quota"
           ? "The selected OpenAI account has no available API quota. Check its API billing and spending limits."
-          : "OpenAI rate or spending limit reached. Try again later.",
+          : "OpenAI API rate or quota limit reached (429). Check API billing, available credits and the model’s rate limits before retrying.",
       );
     if (code === "model_not_found" || param === "model")
       throw new Error("The gateway model is unavailable to the selected OpenAI key. Check OPENAI_MODEL and model access.");

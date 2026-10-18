@@ -274,6 +274,7 @@ test("OpenAI request is non-stored and schema/evidence checked", async () => {
       assert.equal(body.store, false);
       assert.equal(body.model, "test-model");
       assert.equal(body.text.format.type, "json_object");
+      assert.equal(body.max_output_tokens, 1500);
       assert.equal(body.input[0].role, "system");
       assert.match(body.input[0].content, /JSON/);
       assert.equal(JSON.parse(body.input[1].content).task, "rewrite");
@@ -314,6 +315,9 @@ test("OpenAI errors classify request, model and billing failures without leaking
     [400, { param: "model", message: "private-resume sk-secret" }, /model is unavailable/],
     [400, { message: "private-resume sk-secret" }, /request format/],
     [429, { code: "insufficient_quota", message: "private-resume sk-secret" }, /API quota/],
+    [429, { type: "insufficient_quota", message: "private-resume sk-secret" }, /API quota/],
+    [429, { message: "Request too large; private-resume sk-secret" }, /token rate limit/],
+    [429, { message: "private-resume sk-secret" }, /API rate or quota limit/],
     [400, null, /request format/],
   ]) {
     await assert.rejects(
