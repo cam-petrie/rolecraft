@@ -273,7 +273,10 @@ test("OpenAI request is non-stored and schema/evidence checked", async () => {
       const body = JSON.parse(options.body);
       assert.equal(body.store, false);
       assert.equal(body.model, "test-model");
-      assert.equal(body.text.format.type, "json_object");
+      assert.equal(body.text.format.type, "json_schema");
+      assert.equal(body.text.format.strict, true);
+      assert.deepEqual(body.text.format.schema.properties.paragraphId.enum, ["p6"]);
+      assert.equal(body.text.format.schema.properties.before, undefined);
       assert.equal(body.max_output_tokens, 1500);
       assert.equal(body.input[0].role, "system");
       assert.match(body.input[0].content, /JSON/);
@@ -306,6 +309,24 @@ test("incomplete OpenAI responses fail without applying anything", async () => {
       ),
     /did not complete/,
   );
+});
+
+test("structured rewrites attach exact source bytes and reject unsafe targets and supplied mismatches", async () => {
+  const w = createDemo();
+  w.paragraphs.find((p) => p.id === "p6").text = "Built\u00a0services\twith React.\nSecond line.";
+  const source = w.paragraphs.find((p) => p.id === "p6");
+  const input = { task: "rewrite", paragraphs: w.paragraphs, role: w.role, paragraphId: "p6" };
+  const response = (data) => async () => Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify(data) }] }] });
+  const suggestion = { paragraphId: "p6", after: "Built services using React. Second line.", reason: "Clarify wording." };
+  const result = await runAI(input, { OPENAI_API_KEY: "test" }, response(suggestion));
+  assert.equal(result.before, source.text);
+  assert.equal(applyRewrite(w.paragraphs, result).find((p) => p.id === "p6").text, suggestion.after);
+  for (const invalid of [
+    { ...suggestion, paragraphId: "missing" },
+    { ...suggestion, before: "Built services with React." },
+  ]) await assert.rejects(() => runAI(input, { OPENAI_API_KEY: "test" }, response(invalid)));
+  source.editable = false;
+  await assert.rejects(() => runAI({ ...input, task: "analyze" }, { OPENAI_API_KEY: "test" }, response({ ...demoAnalysis, rewrites: [suggestion, ...demoAnalysis.rewrites.slice(1)] })));
 });
 
 test("OpenAI errors classify request, model and billing failures without leaking upstream data", async () => {
