@@ -2,6 +2,10 @@
 
 The frontend is published at https://cam-petrie.github.io/rolecraft/. Login needs the Cloudflare backend and a dedicated GitHub OAuth App. Until that setup is complete, local editing and the example workspace work; AI and job-link imports fail closed.
 
+The initial locked backend was deployed on October 18, 2026 at
+`https://rolecraft-gateway.rolecraft.workers.dev`. GitHub OAuth configuration and
+backend secrets are still required before login and AI can be enabled.
+
 ## Access rules
 
 - GitHub account ID `90569344` (`cam-petrie`) is the configured owner. Only that verified account can select the backend’s `OPENAI_API_KEY`.
