@@ -403,6 +403,7 @@ test("portable backup round-trips original data into a separate workspace", asyn
     ...createDemo(),
     kind: "docx",
     filename: "test.docx",
+    resumeLayout: "modern",
     original: await zip.generateAsync({ type: "arraybuffer" }),
     baseline: extractDocx(xml),
     paragraphs: extractDocx(xml),
@@ -413,6 +414,7 @@ test("portable backup round-trips original data into a separate workspace", asyn
   assert.notEqual(restored.id, source.id);
   assert.equal(restored.paragraphs[0].text, source.paragraphs[0].text);
   assert.equal(restored.baseline[0].text, "Built an API & UI.");
+  assert.equal(restored.resumeLayout, "modern");
   assert.deepEqual(
     new Uint8Array(restored.original),
     new Uint8Array(source.original),

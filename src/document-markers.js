@@ -38,3 +38,18 @@ export function canEditRenderedParagraph(source, renderedText) {
       source.text === renderedText,
   );
 }
+// New PDF layouts can flow several source lines in one Word paragraph. Keep
+// each source range independently editable without altering the export file.
+export function wrapTemplateSource(marker) {
+  if (!marker) return null;
+  const span = marker.ownerDocument.createElement("span");
+  span.className = "template-source";
+  marker.parentNode.insertBefore(span, marker.nextSibling);
+  let node = span.nextSibling;
+  while (node && !node.getAttribute?.("id")?.startsWith("rolecraft_")) {
+    const next = node.nextSibling;
+    span.appendChild(node);
+    node = next;
+  }
+  return span;
+}

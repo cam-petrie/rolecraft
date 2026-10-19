@@ -3462,3 +3462,29 @@ main {
     padding: 3px;
   }
 }
+
+/* Resume layout chooser: six visual choices, always arranged 3 × 2. */
+.resume-layout-dialog { width: min(700px, calc(100vw - 28px)); max-width: 700px; max-height: calc(100dvh - 32px); padding: 0; }
+.layout-picker-intro { color: #63736b; margin: 0 0 20px; line-height: 1.6; }
+.resume-layout-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.resume-layout-card { position: relative; display: flex; flex-direction: column; align-items: center; padding: 10px 8px 14px; border: 1px solid #dce4dc; background: #f7f9f5; color: #294135; border-radius: 10px; cursor: pointer; font: inherit; transition: border-color .15s, box-shadow .15s; }
+.resume-layout-card:hover { border-color: #789b88; }
+.resume-layout-card.selected { border-color: #176b5b; box-shadow: 0 0 0 1px #176b5b; background: #edf5ef; }
+.resume-layout-card:focus-visible { outline: 3px solid #a8cdbd; outline-offset: 3px; }
+.layout-mini { width: 100%; height: 132px; margin-bottom: 7px; }
+.resume-layout-card strong { font-size: 13px; }
+.resume-layout-card > span:last-child { font-size: 10px; color: #6a7c71; margin-top: 5px; text-align: center; }
+.layout-check { position: absolute; top: 9px; right: 9px; width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; background: #fff; border: 1px solid #d7e1d9; color: #176b5b; }
+.resume-layout-card.selected .layout-check { background: #176b5b; color: white; border-color: #176b5b; }
+.layout-picker-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.layout-switch { color: #315b48; }
+@media (max-width: 650px) {
+  .resume-layout-dialog .modal-body { padding: 16px; }
+  .resume-layout-grid { gap: 8px; }
+  .layout-mini { height: 92px; }
+  .resume-layout-card { padding: 8px 4px 10px; }
+  .resume-layout-card strong { font-size: 11px; }
+  .resume-layout-card > span:last-child { font-size: 9px; }
+  .workbench-meta { flex-wrap: wrap; height: auto; gap: 10px; }
+  .workbench-meta > div { flex-wrap: wrap; }
+}

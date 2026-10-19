@@ -4,6 +4,7 @@ import { Document, Packer, Paragraph, TextRun } from "docx";
 import { readPdfLayout } from "./pdf-layout.js";
 import { exportStyledPdfDocx } from "./pdf-docx.js";
 import { alignPdfTabs } from "./pdf-preview.js";
+import { hasResumeLayout, buildResumeLayout } from "./resume-layouts.js";
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const nodes = (e, name) => Array.from(e.getElementsByTagNameNS(W, name));
 function parse(xml) {
@@ -137,6 +138,7 @@ export async function exportResume(
   workspace,
   paragraphs = workspace.paragraphs,
 ) {
+  if (hasResumeLayout(workspace)) return buildResumeLayout(workspace, paragraphs);
   if (workspace.kind === "docx") {
     const zip = await JSZip.loadAsync(workspace.original);
     const xml = await zip.file("word/document.xml").async("string");

@@ -12,11 +12,13 @@ import {
 } from "lucide-react";
 import { exportResume } from "./documents.js";
 import { alignPdfTabs } from "./pdf-preview.js";
+import { hasResumeLayout, selectedResumeLayout } from "./resume-layouts.js";
 import {
   markPreviewParagraphs,
   normalizeInlineEdit,
   canEditRenderedParagraph,
   renderedParagraphText,
+  wrapTemplateSource,
 } from "./document-markers.js";
 function OriginalPdf({ original }) {
   const ref = useRef();
@@ -111,6 +113,9 @@ export default function DocumentViewport({
   useEffect(() => {
     if (editingStep || preview) setOriginal(false);
   }, [editingStep, preview]);
+  useEffect(() => { if (hasResumeLayout(w)) setOriginal(false); }, [w.resumeLayout]);
+  const customLayout = !original && hasResumeLayout(w);
+  const sourceMarkers = w.kind === "pdf" || customLayout;
   const pdfOriginal = w.kind === "pdf" && original;
   const renderedParagraphs = original
     ? w.baseline
@@ -141,7 +146,7 @@ export default function DocumentViewport({
     const prefix = "rc_" + crypto.randomUUID().replace(/-/g, "") + "_";
     (async () => {
       try {
-        const blob = await exportResume(w, renderedParagraphs);
+        const blob = await exportResume(original ? { ...w, resumeLayout: "original" } : w, renderedParagraphs);
         const zip = await JSZip.loadAsync(await blob.arrayBuffer());
         const xml = await zip.file("word/document.xml").async("string");
         // Rebuilt PDF/demo documents have sequential paragraph IDs; original DOCX IDs are XML indices.
@@ -150,7 +155,7 @@ export default function DocumentViewport({
             ? renderedParagraphs
             : renderedParagraphs.map((p, i) => ({ ...p, id: "p" + i }));
         const pdfMarkers = new Map();
-        if (w.kind === "pdf") {
+        if (sourceMarkers) {
           const doc = new DOMParser().parseFromString(xml, "application/xml");
           const ns =
             "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -167,11 +172,11 @@ export default function DocumentViewport({
             },
           );
         }
-        zip.file(
+        if (!customLayout) zip.file(
           "word/document.xml",
           markPreviewParagraphs(
             xml,
-            w.kind === "pdf"
+            sourceMarkers
               ? renderedParagraphs.map((p) => ({
                   ...p,
                   id: pdfMarkers.get(p.id),
@@ -199,17 +204,13 @@ export default function DocumentViewport({
         target.replaceChildren(...detached.childNodes);
         let count = 0;
         renderedParagraphs.forEach((p, i) => {
-          const marker = target.querySelector(
+          const marker = customLayout ? target.querySelector('[id="rolecraft_source_' + p.id + '"]') : target.querySelector(
             '[id="' +
               prefix +
-              (w.kind === "docx"
-                ? p.id
-                : w.kind === "pdf"
-                  ? pdfMarkers.get(p.id)
-                  : "p" + i) +
+              (sourceMarkers ? pdfMarkers.get(p.id) : w.kind === "docx" ? p.id : "p" + i) +
               '"]',
           );
-          const el = marker?.closest("p");
+          const el = customLayout ? wrapTemplateSource(marker) : marker?.closest("p");
           if (!el) return;
           el.dataset.resumeId = p.id;
           const editable =
@@ -322,7 +323,7 @@ export default function DocumentViewport({
     return () => {
       cancelled = true;
     };
-  }, [w.id, signature, original, Boolean(preview), busy, pdfOriginal]);
+  }, [w.id, signature, original, Boolean(preview), busy, pdfOriginal, w.resumeLayout]);
   useEffect(() => {
     const all = host.current?.querySelectorAll("[data-resume-id]") || [];
     for (const el of all) {
@@ -422,9 +423,9 @@ export default function DocumentViewport({
           </div>
         </div>
       )}
-      {w.kind === "pdf" && (
+      {(w.kind === "pdf" || customLayout) && (
         <div className="pdf-layout-notice">
-          {original
+          {customLayout ? `${selectedResumeLayout(w.resumeLayout).name} layout · your current edits in a new format. Change the layout anytime in Refine.` : original
             ? "Original PDF · switch to the draft to edit."
             : "PDF draft · typography, colors, spacing and simple columns recovered from the original. Check View original; complex graphics and exact pagination may differ."}
         </div>

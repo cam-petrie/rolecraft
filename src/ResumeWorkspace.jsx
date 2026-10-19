@@ -14,8 +14,11 @@ import {
   CheckCircle2,
   AlertTriangle,
   ChevronDown,
+  LayoutTemplate,
 } from "lucide-react";
 import DocumentViewport from "./DocumentViewport.jsx";
+import ResumeLayoutPicker from "./ResumeLayoutPicker.jsx";
+import { selectedResumeLayout } from "./resume-layouts.js";
 export default function ResumeWorkspace({
   w,
   tab,
@@ -30,10 +33,16 @@ export default function ResumeWorkspace({
   onCustom,
   onSaveVersion,
   onRestore,
+  onLayout,
   onTab,
   roleForm,
 }) {
   const [preview, setPreview] = useState(null);
+  const [layoutPicker, setLayoutPicker] = useState(false);
+  useEffect(() => {
+    if (tab === "editor" && !w.resumeLayout) setLayoutPicker(true);
+    else setLayoutPicker(false);
+  }, [w.id, tab]);
   const panelRef = useRef();
   useEffect(() => {
     setPreview(null);
@@ -82,6 +91,9 @@ export default function ResumeWorkspace({
           <span className="workbench-edits">{edits} edited</span>
         </div>
         <div>
+          {tab === "editor" && <button className="btn layout-switch" disabled={busy} onClick={() => setLayoutPicker(true)}>
+            <LayoutTemplate size={14}/><span>Layout: {selectedResumeLayout(w.resumeLayout).name}</span><ChevronDown size={13}/>
+          </button>}
           <button className="text-button" onClick={onRestore}>
             <RotateCcw size={13} />
             Restore baseline
@@ -92,6 +104,11 @@ export default function ResumeWorkspace({
           </button>
         </div>
       </div>
+      {layoutPicker && <ResumeLayoutPicker current={w.resumeLayout} onClose={() => setLayoutPicker(false)} onChoose={(id) => {
+        setPreview(null);
+        onLayout(id);
+        setLayoutPicker(false);
+      }}/>}
       <div className="workbench-body">
         <DocumentViewport
           key={w.id}

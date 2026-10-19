@@ -7,6 +7,7 @@ A private-by-default resume and interview workspace. The React frontend runs on 
 - A document-first workspace with compact top navigation, a large formatted resume viewport and a contextual right panel for the target role, fit review or recommendations.
 - Direct paragraph editing on the rendered DOCX page. Enter saves, Escape cancels, and pasted text does not import foreign formatting. Complex or mismatched rendered paragraphs remain read-only.
 - Suggestions can be previewed on the resume without saving, then applied or cancelled. An original/draft toggle, zoom controls and fit-to-width keep the document in focus.
+- Refine opens with a 2 × 3 visual layout picker: Keep default, Modern, Editorial, Executive, Compact and Minimal. The Layout button reopens it anytime. New formats use the current text, preserve source edit targets and lists, and flow wrapped PDF lines together; Keep default returns to the uploaded design. Layout choices carry through to exports, backups and saved versions.
 
 - DOCX and text-based PDF resume upload, with original-file retention.
 - Automatic protected baseline; one-click restoration with an automatic snapshot of the current draft.
@@ -15,7 +16,7 @@ A private-by-default resume and interview workspace. The React frontend runs on 
 - Accept or dismiss individual suggestions, request alternatives with specific direction, or manually edit existing paragraphs.
 - Selected-paragraph rewrite requests with review before applying.
 - Word export that patches the original DOCX rather than rebuilding it. It retains document styles, run formatting, tables, images, headers, footers and page settings.
-- Named versions that include the target role; restore earlier drafts and download their DOCX files.
+- Named versions that include the target role and resume layout; restore earlier drafts and download their DOCX files.
 - Browser-local autosave, multiple resume workspaces, and portable JSON backup/restore.
 - Interview prep from the current draft: evidence-to-requirement mapping, substantive study guides and exercises, screening questions, technical questions, and answer frameworks.
 - Downloadable interview study pack in Markdown.
@@ -116,7 +117,7 @@ Changing the resume or role marks existing analysis and prep as outdated. Rewrit
 
 ## Validation status
 
-The production build and all 46 automated tests pass on Node 22. Coverage includes authentication and owner-only key routing, source-grounded AI outputs, Word run preservation, stale-edit guards, PDF font/color extraction, inherited styling, source markers, visual ordering, page dimensions and simple columns. Live GitHub OAuth and OpenAI analysis were verified against the deployed gateway. Browser QA compared single- and two-column styled PDFs with their originals, edited a paragraph in place, confirmed reflow without overlap, inspected the downloaded DOCX for the retained colors/fonts/table/edited text, and recovered styling for a PDF saved before this feature. The styled print document uses the same renderer; the final browser print dialog and Word pagination should be reviewed before submitting a resume. A customer-provided embedded-font PDF was additionally checked against its original for Times New Roman faces, six section rules, centered contact details, right-aligned dates, mixed emphasis and inline-edit preservation. No private resume files are included in the repository. No AI calls were needed for PDF style recovery.
+The production build and all 58 automated tests pass on Node 22. Coverage includes authentication and owner-only key routing, source-grounded AI outputs, Word run preservation, stale-edit guards, PDF font/color extraction, inherited styling, source markers, visual ordering, page dimensions and simple columns. Live GitHub OAuth and OpenAI analysis were verified against the deployed gateway. Browser QA compared single- and two-column styled PDFs with their originals, edited a paragraph in place, confirmed reflow without overlap, inspected the downloaded DOCX for the retained colors/fonts/table/edited text, and recovered styling for a PDF saved before this feature. The styled print document uses the same renderer; the final browser print dialog and Word pagination should be reviewed before submitting a resume. A customer-provided embedded-font PDF was additionally checked against its original for Times New Roman faces, six section rules, centered contact details, right-aligned dates, mixed emphasis and inline-edit preservation. No private resume files are included in the repository. No AI calls were needed for PDF style recovery.
 
 
 ## Official references

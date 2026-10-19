@@ -47,6 +47,7 @@ import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/manrope";
 import "./styles.css";
 import ResumeWorkspace from "./ResumeWorkspace.jsx";
+import { hasResumeLayout, selectedResumeLayout } from "./resume-layouts.js";
 import { AuthProvider, useAuth, AccountStatus, AuthPanel } from "./auth.jsx";
 const steps = [
   {
@@ -164,7 +165,7 @@ function DocPreview({ w }) {
     <>
       <div className="preview-note">
         <FileText size={15} />{" "}
-        {w.kind === "docx"
+        {hasResumeLayout(w) ? `${selectedResumeLayout(w.resumeLayout).name} layout · pagination may differ from Microsoft Word` : w.kind === "docx"
           ? "Word layout preview · pagination may differ from Microsoft Word"
           : w.kind === "pdf"
             ? "Styled PDF draft · compare with the original before submitting"
@@ -402,6 +403,7 @@ function App() {
         role: clone(w.role),
         analysis: clone(w.analysis),
         prep: clone(w.prep),
+        resumeLayout: w.resumeLayout || "original",
       };
       const next = {
         ...w,
@@ -416,7 +418,7 @@ function App() {
       setToast("Version saved. You can restore it anytime.");
     });
   }
-  function restore(paragraphs, role) {
+  function restore(paragraphs, role, resumeLayout = "original") {
     const auto = {
       id: crypto.randomUUID(),
       name: "Before restore · automatic snapshot",
@@ -425,10 +427,12 @@ function App() {
       role: clone(w.role),
       analysis: clone(w.analysis),
       prep: clone(w.prep),
+      resumeLayout: w.resumeLayout || "original",
     };
     update((old) => ({
       ...old,
       paragraphs: clone(paragraphs),
+      resumeLayout,
       role: clone(role || old.role),
       analysis: null,
       prep: null,
@@ -895,6 +899,7 @@ function App() {
                 setModal({ type: "save" });
               }}
               onRestore={() => setModal({ type: "baseline" })}
+              onLayout={(resumeLayout) => update((old) => ({ ...old, resumeLayout }))}
               onTab={setTab}
               roleForm={
                 <RoleForm
@@ -1174,6 +1179,7 @@ function App() {
                             ).length
                           }{" "}
                           paragraphs changed from baseline
+                          {` · ${selectedResumeLayout(v.resumeLayout).name}`}
                         </small>
                       </div>
                       <Button
@@ -1189,7 +1195,7 @@ function App() {
                         onClick={() =>
                           action("Preparing version", async () =>
                             download(
-                              await exportResume(w, v.paragraphs),
+                              await exportResume({ ...w, resumeLayout: v.resumeLayout || "original" }, v.paragraphs),
                               "resume-" +
                                 v.name.replace(/[^a-z0-9-]/gi, "-") +
                                 ".docx",
@@ -1342,7 +1348,9 @@ function App() {
               <div className="notice info">
                 <ShieldCheck size={18} />
                 <span>
-                  {w.kind === "docx"
+                  {hasResumeLayout(w)
+                    ? `${selectedResumeLayout(w.resumeLayout).name} layout is used for the preview, DOCX download, and Print / Save PDF. The original upload is unchanged. Check final pagination before submitting.`
+                    : w.kind === "docx"
                     ? "Existing Word styles, tables and document structure are retained. Longer text can change line wrapping and pagination. Verify the final file in Word before applying."
                     : w.kind === "pdf"
                       ? "PDF typography, colors, spacing, page size and simple columns are recovered for your editable draft and exports. Some fonts may substitute; graphics and exact pagination may differ. Compare with the original before submitting."
@@ -1437,6 +1445,7 @@ function App() {
                       ? w.baseline
                       : modal.version.paragraphs,
                     modal.type === "restore" ? modal.version.role : null,
+                    modal.type === "restore" ? modal.version.resumeLayout || "original" : "original",
                   )
                 }
               >
