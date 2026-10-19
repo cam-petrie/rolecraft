@@ -2,7 +2,7 @@ name = "rolecraft-gateway"
 main = "server/worker.js"
 compatibility_date = "2026-10-01"
 [vars]
-OPENAI_MODEL = "gpt-4.1-mini"
+OPENAI_MODEL = "gpt-6-luna"
 ALLOWED_ORIGINS = "https://cam-petrie.github.io"
 FRONTEND_URL = "https://cam-petrie.github.io/rolecraft/"
 # Immutable GitHub account ID, verified from GitHub after OAuth login.

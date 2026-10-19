@@ -46,6 +46,8 @@ npm run preview
 
 Read [LOGIN_SETUP.md](./LOGIN_SETUP.md) for the complete backend activation steps.
 
+AI analysis, rewrites and interview prep use `gpt-6-luna` by default through the Responses API, with `reasoning.effort: "none"` to preserve fast responses and the existing output budgets. Set `OPENAI_MODEL` to override the model; other models retain their own default reasoning settings.
+
 - Only verified GitHub account **cam-petrie** (immutable ID `90569344`) can use the backend’s optional OpenAI key.
 - Other users may sign in with GitHub and use their own OpenAI key for the current session. The backend never falls back to the owner’s key for other accounts.
 - Personal keys and signed sessions are held in memory only and cleared on refresh, expiry or sign-out. Personal keys are sent over HTTPS to the gateway for each AI request, so users must trust its operator. They are not intentionally logged or persisted.
@@ -117,7 +119,7 @@ Changing the resume or role marks existing analysis and prep as outdated. Rewrit
 
 ## Validation status
 
-The production build and all 58 automated tests pass on Node 22. Coverage includes authentication and owner-only key routing, source-grounded AI outputs, Word run preservation, stale-edit guards, PDF font/color extraction, inherited styling, source markers, visual ordering, page dimensions and simple columns. Live GitHub OAuth and OpenAI analysis were verified against the deployed gateway. Browser QA compared single- and two-column styled PDFs with their originals, edited a paragraph in place, confirmed reflow without overlap, inspected the downloaded DOCX for the retained colors/fonts/table/edited text, and recovered styling for a PDF saved before this feature. The styled print document uses the same renderer; the final browser print dialog and Word pagination should be reviewed before submitting a resume. A customer-provided embedded-font PDF was additionally checked against its original for Times New Roman faces, six section rules, centered contact details, right-aligned dates, mixed emphasis and inline-edit preservation. No private resume files are included in the repository. No AI calls were needed for PDF style recovery.
+The production build and all 59 automated tests pass on Node 22. Coverage includes authentication and owner-only key routing, source-grounded AI outputs, Word run preservation, stale-edit guards, PDF font/color extraction, inherited styling, source markers, visual ordering, page dimensions and simple columns. Live GitHub OAuth and OpenAI analysis were verified against the deployed gateway. Browser QA compared single- and two-column styled PDFs with their originals, edited a paragraph in place, confirmed reflow without overlap, inspected the downloaded DOCX for the retained colors/fonts/table/edited text, and recovered styling for a PDF saved before this feature. The styled print document uses the same renderer; the final browser print dialog and Word pagination should be reviewed before submitting a resume. A customer-provided embedded-font PDF was additionally checked against its original for Times New Roman faces, six section rules, centered contact details, right-aligned dates, mixed emphasis and inline-edit preservation. No private resume files are included in the repository. No AI calls were needed for PDF style recovery.
 
 
 ## Official references

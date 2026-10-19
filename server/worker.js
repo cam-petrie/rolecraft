@@ -243,6 +243,7 @@ export async function runAI(body, env, fetcher = fetch) {
       : input.task === "rewrite"
         ? `Rewrite ONLY paragraph ${input.paragraphId}. Follow the requested direction where supported by source evidence.`
         : "Create interview prep using the CURRENT edited resume. Map relevant resume paragraphs to specific job requirements. Produce 3-6 substantive study guides explaining concepts and practice exercises, plus 8-12 likely questions covering BOTH screening and technical rounds. Evidence must exactly equal its source paragraph. Do not claim the candidate has skills only required by the job. Provide answer frameworks, not fabricated stories.";
+  const model = env.OPENAI_MODEL || "gpt-6-luna";
   const r = await fetcher("https://api.openai.com/v1/responses", {
     method: "POST",
     signal: AbortSignal.timeout(120000),
@@ -251,7 +252,9 @@ export async function runAI(body, env, fetcher = fetch) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: env.OPENAI_MODEL || "gpt-4.1-mini",
+      model,
+      // Preserve the previous non-reasoning workflow and existing output budgets.
+      ...(model === "gpt-6-luna" ? { reasoning: { effort: "none" } } : {}),
       store: false,
       instructions:
         instructions +

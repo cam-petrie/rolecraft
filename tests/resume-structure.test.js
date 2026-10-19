@@ -54,3 +54,17 @@ test("wrapped skills lines keep comma-bearing labels, parenthesized items and co
   assert.equal(preserveRewriteStructure(ps, { paragraphId: "p1", after: "Git, Playwright (E2E), Telemetry Pipelines" }).after, "Monitoring, Quality & Tooling :  Git, Playwright (E2E), Telemetry Pipelines,");
   assert.equal(preserveRewriteStructure(ps, { paragraphId: "p2", after: "AWS (EC2, S3, Lambda), Kubernetes (GKE, EKS), Docker" }).after, "Cloud: AWS (EC2, S3, Lambda), Kubernetes (GKE, EKS), Docker");
 });
+
+test("default gateway model uses Luna without hidden reasoning and keeps structured output", async () => {
+  const paragraphs = [paragraph("p", "• Built APIs.")];
+  await runAI({ task: "rewrite", paragraphs, paragraphId: "p", role: { title: "Engineer", company: "Example", url: "", text: "Build APIs. ".repeat(12) } }, { OPENAI_API_KEY: "test" }, async (_url, options) => {
+    const request = JSON.parse(options.body);
+    assert.equal(request.model, "gpt-6-luna");
+    assert.deepEqual(request.reasoning, { effort: "none" });
+    assert.equal(request.max_output_tokens, 1500);
+    assert.equal(request.store, false);
+    assert.equal(request.text.format.type, "json_schema");
+    assert.equal(request.text.format.strict, true);
+    return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify({ paragraphId: "p", after: "Designed APIs.", reason: "Clearer" }) }] }] });
+  });
+});
