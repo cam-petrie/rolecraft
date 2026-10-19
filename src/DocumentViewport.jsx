@@ -11,10 +11,12 @@ import {
   Eye,
 } from "lucide-react";
 import { exportResume } from "./documents.js";
+import { alignPdfTabs } from "./pdf-preview.js";
 import {
   markPreviewParagraphs,
   normalizeInlineEdit,
   canEditRenderedParagraph,
+  renderedParagraphText,
 } from "./document-markers.js";
 function OriginalPdf({ original }) {
   const ref = useRef();
@@ -190,6 +192,7 @@ export default function DocumentViewport({
           useBase64URL: true,
           renderAltChunks: false,
           renderComments: false,
+          experimental: w.kind === "pdf",
         });
         if (cancelled) return;
         const previousScroll = stage.current?.scrollTop || 0;
@@ -213,7 +216,10 @@ export default function DocumentViewport({
             !original &&
             !preview &&
             !busy &&
-            canEditRenderedParagraph(p, el.textContent);
+            canEditRenderedParagraph(
+              p,
+              renderedParagraphText(el, w.kind === "pdf"),
+            );
           if (editable) count++;
           el.setAttribute("tabindex", "0");
           el.setAttribute("role", "textbox");
@@ -283,7 +289,9 @@ export default function DocumentViewport({
           el.addEventListener("blur", () => {
             setEditing(false);
             if (!editable) return;
-            const text = normalizeInlineEdit(el.textContent || "");
+            const text = normalizeInlineEdit(
+              renderedParagraphText(el, w.kind === "pdf"),
+            );
             if (text.length > 12000) {
               el.innerHTML = html;
               setError(
@@ -297,6 +305,10 @@ export default function DocumentViewport({
         setMapped(count);
         setPageWidth(target.querySelector("section.docx")?.offsetWidth || 816);
         if (stage.current) stage.current.scrollTop = previousScroll;
+        if (w.kind === "pdf") {
+          await new Promise((resolve) => setTimeout(resolve, 550));
+          if (!cancelled) alignPdfTabs(target);
+        }
       } catch (e) {
         if (!cancelled)
           setError(

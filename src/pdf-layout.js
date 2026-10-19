@@ -6,34 +6,134 @@ export function readablePdfColor(color = "000000") {
   // Dark sidebar backgrounds are graphics and may not reconstruct. Keep their
   // white/pale labels visible on the draft's white paper.
   const rgb = color.match(/.{2}/g)?.map((v) => parseInt(v, 16));
-  return rgb?.length === 3 && rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722 > 205
-    ? "333333" : color;
+  return rgb?.length === 3 &&
+    rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722 > 205
+    ? "333333"
+    : color;
 }
 export function pdfFont(name = "", fallback = "sans-serif") {
   const clean = name.replace(/^[A-Z]{6}\+/, "");
   let font = /georgia/i.test(clean)
     ? "Georgia"
-    : /garamond/i.test(clean)
-      ? "Garamond"
-      : /cambria/i.test(clean)
-        ? "Cambria"
-        : /calibri|carlito/i.test(clean)
-          ? "Calibri"
-          : /courier|mono/i.test(clean + " " + fallback)
-            ? "Courier New"
-            : /verdana/i.test(clean)
-              ? "Verdana"
-              : /aptos/i.test(clean)
-                ? "Aptos"
-                : /times|serif/i.test(clean + " " + fallback) &&
-                    !/sans/i.test(clean + " " + fallback)
-                  ? "Times New Roman"
-                  : "Arial";
+    : /times/i.test(clean)
+      ? "Times New Roman"
+      : /garamond/i.test(clean)
+        ? "Garamond"
+        : /cambria/i.test(clean)
+          ? "Cambria"
+          : /calibri|carlito/i.test(clean)
+            ? "Calibri"
+            : /courier|mono/i.test(clean + " " + fallback)
+              ? "Courier New"
+              : /verdana/i.test(clean)
+                ? "Verdana"
+                : /aptos/i.test(clean)
+                  ? "Aptos"
+                  : /times|serif/i.test(clean + " " + fallback) &&
+                      !/sans/i.test(clean + " " + fallback)
+                    ? "Times New Roman"
+                    : "Arial";
   return {
     font,
     bold: /bold|black|heavy|semibold|demi/i.test(clean),
     italics: /italic|oblique/i.test(clean),
   };
+}
+
+export function pdfHorizontalRules(ops, OPS) {
+  const rules = [],
+    stack = [];
+  let matrix = [1, 0, 0, 1, 0, 0],
+    color = "000000",
+    bounds = null;
+  const point = (x, y) => [
+    matrix[0] * x + matrix[2] * y + matrix[4],
+    matrix[1] * x + matrix[3] * y + matrix[5],
+  ];
+  for (let i = 0; i < ops.fnArray.length; i++) {
+    const fn = ops.fnArray[i],
+      args = ops.argsArray[i];
+    if (fn === OPS.save) stack.push({ matrix: [...matrix], color });
+    else if (fn === OPS.restore) {
+      const saved = stack.pop();
+      if (saved) ({ matrix, color } = saved);
+    } else if (fn === OPS.transform) {
+      const [a, b, c, d, e, f] = matrix,
+        [g, h, j, k, l, m] = args;
+      matrix = [
+        a * g + c * h,
+        b * g + d * h,
+        a * j + c * k,
+        b * j + d * k,
+        a * l + c * m + e,
+        b * l + d * m + f,
+      ];
+    } else if (fn === OPS.setFillRGBColor)
+      color = Array.from(args, (v) =>
+        clamp(Math.round(v), 0, 255).toString(16).padStart(2, "0"),
+      )
+        .join("")
+        .toUpperCase();
+    else if (fn === OPS.constructPath && args[2]?.length === 4) {
+      const [x0, y0, x1, y1] = args[2];
+      const points = [
+        point(x0, y0),
+        point(x1, y0),
+        point(x0, y1),
+        point(x1, y1),
+      ];
+      bounds = {
+        x: Math.min(...points.map((p) => p[0])),
+        right: Math.max(...points.map((p) => p[0])),
+        y: Math.min(...points.map((p) => p[1])),
+        top: Math.max(...points.map((p) => p[1])),
+      };
+    } else if (
+      [
+        OPS.fill,
+        OPS.eoFill,
+        OPS.fillStroke,
+        OPS.eoFillStroke,
+        OPS.stroke,
+      ].includes(fn)
+    ) {
+      if (bounds && bounds.right - bounds.x > 25 && bounds.top - bounds.y <= 3)
+        rules.push({
+          ...bounds,
+          color,
+          thickness: Math.max(0.5, bounds.top - bounds.y),
+        });
+      bounds = null;
+    } else if (fn === OPS.endPath) bounds = null;
+  }
+  return rules;
+}
+export function applyPdfRules(layout, rules) {
+  for (const rule of rules) {
+    if (rule.right - rule.x < layout.width * 0.45) {
+      for (const line of layout.lines.filter(
+        (l) => l.y >= rule.y - 1 && l.y - rule.y < l.size,
+      ))
+        for (const run of line.runs || [])
+          if (
+            run.x >= rule.x - 1 &&
+            run.right <= rule.right + 1 &&
+            run.color === rule.color
+          )
+            run.underline = true;
+      continue;
+    }
+    const heading = layout.lines
+      .filter(
+        (l) =>
+          l.y >= rule.y - 1 &&
+          l.y - rule.y < l.size * 1.5 &&
+          Math.abs(l.x - rule.x) < 12,
+      )
+      .sort((a, b) => Math.abs(a.y - rule.y) - Math.abs(b.y - rule.y))[0];
+    if (heading) heading.rule = rule;
+  }
+  return layout;
 }
 
 export function pdfPaintedText(ops, OPS) {
@@ -131,9 +231,24 @@ export function pdfPageLines(content, page, fontNames = {}, paints = []) {
         ? colors.find((r) => r.start <= found && r.end > found)?.color
         : undefined;
     if (found >= 0) cursor = found + item.str.length;
-    const text = (line && !line.endsWith(" ") ? " " : "") + item.str;
+    const prefix = line && !line.endsWith(" ") ? " " : "";
+    const gap = item.transform[4] - right;
+    const tabX =
+      line && item.str.trim() && gap > 24 ? item.transform[4] : undefined;
+    const text = prefix + item.str;
     line += text;
-    runs.push({ text, ...style, size, color: color || "000000" });
+    runs.push({
+      text,
+      ...style,
+      size,
+      color: color || "000000",
+      tabX,
+      x: item.transform[4],
+      right: item.transform[4] + item.width,
+      squashPrefix: Boolean(
+        prefix && (gap < size * 0.12 || item.str.startsWith(" ")),
+      ),
+    });
     x = Math.min(x, item.transform[4]);
     right = Math.max(right, item.transform[4] + item.width);
     maxSize = Math.max(maxSize, size);
@@ -179,6 +294,7 @@ export async function readPdfLayout(original) {
         fonts,
         pdfPaintedText(ops, pdfjs.OPS),
       );
+      applyPdfRules(layout, pdfHorizontalRules(ops, pdfjs.OPS));
       for (const line of layout.lines) {
         line.id = `p${paragraphs.length}`;
         paragraphs.push({ id: line.id, text: line.text, editable: true });

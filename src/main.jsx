@@ -41,6 +41,7 @@ import {
 import { createWorkspaceStore, toBackup, fromBackup } from "./storage.js";
 import { callAI, gateway } from "./api.js";
 import { createDemo, demoAnalysis, demoPrep } from "./demo.js";
+import { alignPdfTabs } from "./pdf-preview.js";
 import { signature, applyRewrite } from "../shared/contracts.js";
 import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/manrope";
@@ -139,7 +140,12 @@ function DocPreview({ w }) {
           ignoreHeight: false,
           breakPages: true,
           useBase64URL: true,
+          experimental: w.kind === "pdf",
         });
+        if (w.kind === "pdf") {
+          await new Promise((resolve) => setTimeout(resolve, 550));
+          if (!cancelled) alignPdfTabs(target);
+        }
       } catch (e) {
         if (!cancelled)
           setError(

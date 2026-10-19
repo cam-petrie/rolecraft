@@ -12,6 +12,10 @@ import {
   BorderStyle,
   AlignmentType,
   SectionType,
+  Tab,
+  TabStopType,
+  UnderlineType,
+  LineRuleType,
 } from "docx";
 import { getPdfLayout, editedPdfRuns, readablePdfColor } from "./pdf-layout.js";
 const twips = (n) => Math.round(n * 20);
@@ -85,18 +89,45 @@ export async function buildStyledPdfDocx(layout, paragraphs) {
             Math.abs(line.right - (left + width)) < 5;
           const indent =
             centered || alignedRight ? 0 : Math.max(0, line.x - left);
+          const runs = editedPdfRuns(line, p.text);
           return new Paragraph({
+            run: {
+              font: line.runs[0]?.font || "Arial",
+              size: Math.round(line.size * 2),
+            },
             alignment: centered
               ? AlignmentType.CENTER
               : alignedRight
                 ? AlignmentType.RIGHT
                 : AlignmentType.LEFT,
             indent: { left: twips(indent) },
+            tabStops: runs
+              .filter((r) => r.tabX !== undefined)
+              .map((r) => ({
+                type:
+                  r.tabX > page.width * 0.6
+                    ? TabStopType.RIGHT
+                    : TabStopType.LEFT,
+                position: twips(
+                  r.tabX > page.width * 0.6 ? width : r.tabX - left,
+                ),
+              })),
             spacing: {
               before: twips(before),
               after: 0,
               line: twips(line.size * 1.15),
+              lineRule: LineRuleType.EXACT,
             },
+            border: line.rule
+              ? {
+                  bottom: {
+                    color: line.rule.color,
+                    size: Math.round(line.rule.thickness * 8),
+                    space: 0,
+                    style: BorderStyle.SINGLE,
+                  },
+                }
+              : undefined,
             keepNext:
               index + 1 < ordered.length &&
               line.text.length < 65 &&
@@ -104,17 +135,26 @@ export async function buildStyledPdfDocx(layout, paragraphs) {
             children: [
               new Bookmark({
                 id: "rolecraft_source_" + p.id,
-                children: editedPdfRuns(line, p.text).map(
-                  (r) =>
+                children: runs.flatMap((r) => {
+                  const prefix = r.squashPrefix && r.text.startsWith(" ");
+                  return [
+                    ...(r.tabX !== undefined
+                      ? [new TextRun({ children: [new Tab()] })]
+                      : []),
+                    ...(prefix ? [new TextRun({ text: " ", size: 1 })] : []),
                     new TextRun({
-                      text: r.text,
+                      text: prefix ? r.text.slice(1) : r.text,
                       font: r.font,
                       size: Math.round(r.size * 2),
                       bold: r.bold,
                       italics: r.italics,
                       color: readablePdfColor(r.color),
+                      underline: r.underline
+                        ? { type: UnderlineType.SINGLE }
+                        : undefined,
                     }),
-                ),
+                  ];
+                }),
               }),
             ],
           });

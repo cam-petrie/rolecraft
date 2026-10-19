@@ -3,6 +3,7 @@ import diff from "fast-diff";
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import { readPdfLayout } from "./pdf-layout.js";
 import { exportStyledPdfDocx } from "./pdf-docx.js";
+import { alignPdfTabs } from "./pdf-preview.js";
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const nodes = (e, name) => Array.from(e.getElementsByTagNameNS(W, name));
 function parse(xml) {
@@ -203,12 +204,17 @@ export async function printResume(
       breakPages: true,
       useBase64URL: true,
       renderAltChunks: false,
+      experimental: workspace.kind === "pdf",
     });
     const style = d.createElement("style");
     style.textContent =
       "@page{margin:0}html,body{margin:0!important;padding:0!important}.docx-wrapper{padding:0!important;background:white!important}.docx-wrapper>section.docx{box-shadow:none!important;margin:0!important;break-after:page}.docx-wrapper>section.docx:last-child{break-after:auto}";
     d.head.append(style);
     await d.fonts.ready;
+    if (workspace.kind === "pdf") {
+      await new Promise((resolve) => setTimeout(resolve, 550));
+      alignPdfTabs(d.body);
+    }
     frame.contentWindow.focus();
     frame.contentWindow.print();
     setTimeout(() => frame.remove(), 60000);

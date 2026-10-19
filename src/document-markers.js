@@ -22,10 +22,19 @@ export function markPreviewParagraphs(xml, paragraphs, prefix) {
 export function normalizeInlineEdit(text) {
   return text.replace(/[\r\n\u2028\u2029]+/g, " ");
 }
+export function renderedParagraphText(element, ignoreLayoutTabs = false) {
+  if (!ignoreLayoutTabs) return element.textContent || "";
+  const copy = element.cloneNode(true);
+  for (const span of Array.from(copy.getElementsByTagName("span"))) {
+    if ((" " + span.getAttribute("class") + " ").includes(" docx-tab-stop "))
+      span.parentNode?.removeChild(span);
+  }
+  return copy.textContent || "";
+}
 export function canEditRenderedParagraph(source, renderedText) {
   return Boolean(
     source?.editable &&
-    !/[\r\n\u2028\u2029]/.test(source.text) &&
-    source.text === renderedText,
+      !/[\r\n\u2028\u2029]/.test(source.text) &&
+      source.text === renderedText,
   );
 }
