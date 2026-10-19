@@ -12,6 +12,8 @@ import {
   GraduationCap,
   History,
   Settings,
+  Moon,
+  Sun,
   Plus,
   Check,
   ChevronRight,
@@ -182,6 +184,13 @@ function DocPreview({ w }) {
   );
 }
 function App() {
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem("rolecraft-theme") === "dark" ? "dark" : "light";
+    } catch {
+      return "light";
+    }
+  });
   const [items, setItems] = useState([]),
     [w, setW] = useState(null),
     [ready, setReady] = useState(false),
@@ -205,6 +214,14 @@ function App() {
     backupRef = useRef(),
     liveW = useRef(w);
   liveW.current = w;
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("rolecraft-theme", theme);
+    } catch {
+      // Theme remains active for this session when storage is unavailable.
+    }
+  }, [theme]);
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [tab, w?.id]);
@@ -1293,6 +1310,21 @@ function App() {
         >
           {modal.type === "settings" && (
             <div className="modal-body">
+              <section className="appearance-setting" aria-label="Appearance">
+                <div>
+                  <h3>Appearance</h3>
+                  <p className="small muted">Choose the theme for this browser.</p>
+                </div>
+                <button
+                  className="btn theme-toggle"
+                  aria-pressed={theme === "dark"}
+                  onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
+                >
+                  {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+                  {theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                </button>
+              </section>
+              <div className="modal-divider" />
               <AuthPanel
                 beforeLeave={async () => {
                   if (w) await persist(w);
