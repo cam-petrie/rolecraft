@@ -3,6 +3,7 @@ import diff from "fast-diff";
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import { readPdfLayout } from "./pdf-layout.js";
 import { exportStyledPdfDocx } from "./pdf-docx.js";
+import { buildReplicaDocx, replicaFromLayout } from "./pdf-replica.js";
 import { alignPdfTabs } from "./pdf-preview.js";
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const nodes = (e, name) => Array.from(e.getElementsByTagNameNS(W, name));
@@ -100,6 +101,7 @@ export async function importResume(file) {
     );
   const original = await file.arrayBuffer();
   let paragraphs;
+  let pdfStyle;
   if (kind === "docx") {
     const zip = await JSZip.loadAsync(original);
     const entry = zip.file("word/document.xml");
@@ -111,7 +113,12 @@ export async function importResume(file) {
       );
     paragraphs = extractDocx(xml);
   } else {
-    ({ paragraphs } = await readPdfLayout(original));
+    // Keep readPdfLayout line-by-line for older drafts. New uploads edit a
+    // flowing copy that follows the PDF's type, color, and section style.
+    const read = await readPdfLayout(original);
+    const replica = replicaFromLayout(read.layout);
+    paragraphs = replica.paragraphs;
+    pdfStyle = replica.style;
   }
   if (paragraphs.map((p) => p.text).join("").length < 40)
     throw new Error(
@@ -122,6 +129,7 @@ export async function importResume(file) {
     filename: file.name,
     kind,
     original,
+    ...(pdfStyle ? { pdfStyle } : {}),
     baseline: structuredClone(paragraphs),
     paragraphs,
     versions: [],
@@ -147,7 +155,9 @@ export async function exportResume(
     });
   }
   if (workspace.kind === "pdf")
-    return exportStyledPdfDocx(workspace, paragraphs);
+    return workspace.pdfStyle
+      ? buildReplicaDocx(workspace.pdfStyle, paragraphs)
+      : exportStyledPdfDocx(workspace, paragraphs);
   const doc = new Document({
     sections: [
       {
@@ -208,7 +218,10 @@ export async function printResume(
     });
     const style = d.createElement("style");
     style.textContent =
-      "@page{margin:0}html,body{margin:0!important;padding:0!important}.docx-wrapper{padding:0!important;background:white!important}.docx-wrapper>section.docx{box-shadow:none!important;margin:0!important;break-after:page}.docx-wrapper>section.docx:last-child{break-after:auto}";
+      "@page{margin:0}html,body{margin:0!important;padding:0!important}.docx-wrapper{padding:0!important;background:white!important}.docx-wrapper>section.docx{box-shadow:none!important;margin:0!important;break-after:page}.docx-wrapper>section.docx:last-child{break-after:auto}" +
+      (workspace.pdfStyle
+        ? ".docx-wrapper>section.docx{height:auto!important;overflow:visible!important}"
+        : "");
     d.head.append(style);
     await d.fonts.ready;
     if (workspace.kind === "pdf") {

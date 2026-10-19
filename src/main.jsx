@@ -167,7 +167,9 @@ function DocPreview({ w }) {
         {w.kind === "docx"
           ? "Word layout preview · pagination may differ from Microsoft Word"
           : w.kind === "pdf"
-            ? "Styled PDF draft · compare with the original before submitting"
+            ? w.pdfStyle
+              ? "Editable copy · compare with the original before submitting"
+              : "Styled PDF draft · compare with the original before submitting"
             : "Document preview"}
       </div>
       {loading && (
@@ -176,7 +178,12 @@ function DocPreview({ w }) {
         </p>
       )}
       {error && <div className="notice warning">{error}</div>}
-      <div className="document-preview" ref={ref} />
+      <div
+        className={
+          w.pdfStyle ? "document-preview replica-sheet" : "document-preview"
+        }
+        ref={ref}
+      />
     </>
   );
 }
@@ -1345,7 +1352,9 @@ function App() {
                   {w.kind === "docx"
                     ? "Existing Word styles, tables and document structure are retained. Longer text can change line wrapping and pagination. Verify the final file in Word before applying."
                     : w.kind === "pdf"
-                      ? "PDF typography, colors, spacing, page size and simple columns are recovered for your editable draft and exports. Some fonts may substitute; graphics and exact pagination may differ. Compare with the original before submitting."
+                      ? w.pdfStyle
+                        ? "This draft copies the original type, colors, and section style into a flowing resume. Longer edits reflow onto new lines. Graphics and the original column layout are not copied. Compare with the original before submitting."
+                        : "PDF typography, colors, spacing, page size and simple columns are recovered for your editable draft and exports. Some fonts may substitute; graphics and exact pagination may differ. Compare with the original before submitting."
                       : "Sample resumes export as a Word document."}
                 </span>
               </div>

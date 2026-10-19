@@ -5,6 +5,7 @@ import {
   prepSchema,
 } from "../shared/contracts.js";
 import { importResume } from "./documents.js";
+import { readPdfLayout } from "./pdf-layout.js";
 const databases = new Map();
 export function workspaceDatabaseName(accountId) {
   if (accountId === null || accountId === undefined) return "rolecraft";
@@ -114,7 +115,17 @@ export async function fromBackup(file) {
     throw new Error("Original file is too large.");
   if (w.kind !== "demo") {
     const source = await importResume(new File([bytes], w.filename));
-    if (JSON.stringify(source.baseline) !== JSON.stringify(w.baseline))
+    const saved = JSON.stringify(w.baseline);
+    if (saved === JSON.stringify(source.baseline)) {
+      if (source.pdfStyle) w.pdfStyle = source.pdfStyle;
+      else delete w.pdfStyle;
+    } else if (w.kind === "pdf") {
+      // Drafts saved before the flowing copy still match one paragraph per line.
+      const legacy = await readPdfLayout(bytes.buffer);
+      if (JSON.stringify(legacy.paragraphs) !== saved)
+        throw new Error("Backup baseline does not match its original file.");
+      delete w.pdfStyle;
+    } else
       throw new Error("Backup baseline does not match its original file.");
   }
   for (const ps of [w.paragraphs, ...w.versions.map((v) => v.paragraphs)])

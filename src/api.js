@@ -70,7 +70,11 @@ export async function callAI(config, task, workspace, extra = {}) {
     );
   const data = await gateway(config, "/ai", {
     task,
-    paragraphs: workspace.paragraphs,
+    paragraphs: workspace.paragraphs.map(({ id, text, editable }) => ({
+      id,
+      text,
+      editable,
+    })),
     role: workspace.role,
     ...extra,
   });

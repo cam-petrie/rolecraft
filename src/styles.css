@@ -2500,6 +2500,10 @@ main {
 .resume-sheet section.docx:last-child {
   margin-bottom: 0 !important;
 }
+.replica-sheet section.docx {
+  height: auto !important;
+  overflow: visible !important;
+}
 :where(.resume-sheet) p {
   color: inherit;
   line-height: inherit;

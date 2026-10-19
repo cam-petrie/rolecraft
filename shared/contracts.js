@@ -4,6 +4,7 @@ export const paragraphSchema = z.object({
   id: z.string().max(100),
   text: z.string().max(12000),
   editable: z.boolean(),
+  role: z.enum(["name", "contact", "heading", "entry", "body"]).optional(),
 });
 export const roleSchema = z.object({
   title: z.string().max(300),
