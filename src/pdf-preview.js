@@ -3,6 +3,7 @@
 export function alignPdfTabs(root) {
   for (const tab of root.querySelectorAll(".docx-tab-stop")) {
     const p = tab.closest("p");
+    if (!p || p.classList.contains("resume-paragraph-editing")) continue;
     const scale = p.getBoundingClientRect().width / p.offsetWidth;
     if (!scale) continue;
     const doc = p.ownerDocument;

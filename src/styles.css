@@ -2527,6 +2527,12 @@ main {
   background: #f5f9ee;
   cursor: text;
 }
+.resume-sheet .resume-paragraph-editing {
+  line-height: 1.3 !important;
+  height: auto !important;
+  overflow: visible !important;
+  white-space: pre-wrap !important;
+}
 .resume-sheet [data-editable="true"]::selection,
 .resume-sheet [data-editable="true"] *::selection {
   background: #d4e5c6;

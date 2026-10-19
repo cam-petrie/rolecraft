@@ -233,6 +233,9 @@ export function pdfPageLines(content, page, fontNames = {}, paints = []) {
     if (found >= 0) cursor = found + item.str.length;
     const prefix = line && !line.endsWith(" ") ? " " : "";
     const gap = item.transform[4] - right;
+    // PDF.js turns a large positioning gap into one space glyph whose width is
+    // the whole gap. Keep a normal space in the text and tab the next glyph.
+    const wideSpace = !item.str.trim() && item.width > Math.max(24, size * 2);
     const tabX =
       line && item.str.trim() && gap > 24 ? item.transform[4] : undefined;
     const text = prefix + item.str;
@@ -244,13 +247,16 @@ export function pdfPageLines(content, page, fontNames = {}, paints = []) {
       color: color || "000000",
       tabX,
       x: item.transform[4],
-      right: item.transform[4] + item.width,
+      right: item.transform[4] + (wideSpace ? 0 : item.width),
       squashPrefix: Boolean(
-        prefix && (gap < size * 0.12 || item.str.startsWith(" ")),
+        prefix && !wideSpace && (gap < size * 0.12 || item.str.startsWith(" ")),
       ),
     });
     x = Math.min(x, item.transform[4]);
-    right = Math.max(right, item.transform[4] + item.width);
+    right = Math.max(
+      right,
+      item.transform[4] + (wideSpace ? 0 : item.width),
+    );
     maxSize = Math.max(maxSize, size);
     y = item.transform[5];
     if (item.hasEOL) flush();
@@ -332,19 +338,183 @@ export async function getPdfLayout(workspace) {
   return layouts.get(workspace.original);
 }
 
-export function editedPdfRuns(line, text) {
-  if (text === line.text) return line.runs;
-  const owners = line.runs.flatMap((r, i) => Array(r.text.length).fill(i));
-  const runs = line.runs.map((r) => ({ ...r, text: "" }));
+function typography(run, size = 11) {
+  return {
+    font: run?.font || "Arial",
+    size: run?.size || size,
+    bold: Boolean(run?.bold),
+    italics: Boolean(run?.italics),
+    color: run?.color || "000000",
+    underline: Boolean(run?.underline),
+  };
+}
+function runIndexAt(runs, index) {
   let pos = 0;
-  for (const [op, chars] of diff(line.text, text)) {
-    if (op === 0)
-      for (const ch of chars.split("")) {
-        runs[owners[pos] ?? 0].text += ch;
-        pos++;
-      }
-    else if (op === -1) pos += chars.length;
-    else runs[owners[Math.max(0, pos - 1)] ?? 0].text += chars;
+  for (let i = 0; i < runs.length; i++) {
+    if (index < pos + runs[i].text.length) return i;
+    pos += runs[i].text.length;
   }
-  return runs.filter((r) => r.text);
+  return Math.max(0, runs.length - 1);
+}
+function sameProps(a, b) {
+  const flags = ["bold", "italics", "underline", "squashPrefix"];
+  if (flags.some((key) => Boolean(a[key]) !== Boolean(b[key]))) return false;
+  return (
+    (a.font || "Arial") === (b.font || "Arial") &&
+    (a.size || 11) === (b.size || 11) &&
+    (a.color || "000000") === (b.color || "000000") &&
+    a.tabX === b.tabX
+  );
+}
+function insertionTypography(source, lineText, pos, size) {
+  let previous = pos - 1;
+  while (previous >= 0 && /\s/.test(lineText[previous])) previous--;
+  let next = pos;
+  while (next < lineText.length && /\s/.test(lineText[next])) next++;
+  const nextStartsRun =
+    next < lineText.length &&
+    source.some(
+      (_, index) =>
+        source.slice(0, index).reduce((n, item) => n + item.text.length, 0) ===
+        next,
+    );
+  const index =
+    nextStartsRun && previous !== next
+      ? runIndexAt(source, next)
+      : previous >= 0
+        ? runIndexAt(source, previous)
+        : 0;
+  return typography(source[index], size);
+}
+function reseatTabs(source, pieces) {
+  for (const run of source) {
+    if (run.tabX === undefined) continue;
+    const payload = run.text.trim();
+    for (const piece of pieces) if (piece.tabX === run.tabX) delete piece.tabX;
+    if (!payload) continue;
+    const host = [...pieces]
+      .reverse()
+      .find((piece) => piece.text.includes(payload));
+    if (!host) continue;
+    const at = host.text.lastIndexOf(payload);
+    if (at > 0) {
+      const head = { ...host, text: host.text.slice(0, at) };
+      delete head.tabX;
+      host.text = host.text.slice(at);
+      pieces.splice(pieces.indexOf(host), 0, head);
+    }
+    host.tabX = run.tabX;
+  }
+}
+// Unchanged characters keep their original run, including a date tab.
+// Inserted characters continue the neighboring typeface, weight, color and
+// underline, but they do not inherit tab stops or kerning-only spaces.
+export function editedPdfRuns(line, text) {
+  const source = line.runs?.length
+    ? line.runs
+    : [
+        {
+          text: line.text,
+          font: "Arial",
+          size: line.size || 11,
+          bold: false,
+          color: "000000",
+        },
+      ];
+  if (text === line.text) return source.map((run) => ({ ...run }));
+  const pieces = [];
+  const tabUsed = new Set();
+  const push = (props, chars) => {
+    if (!chars) return;
+    const last = pieces[pieces.length - 1];
+    if (last && sameProps(last, props)) last.text += chars;
+    else pieces.push({ ...props, text: chars });
+  };
+  let pos = 0;
+  for (const [op, chars] of diff(line.text || "", text || "")) {
+    if (op === 0) {
+      let rest = chars;
+      while (rest) {
+        const index = runIndexAt(source, Math.min(pos, line.text.length - 1));
+        const run = source[index];
+        const start = source
+          .slice(0, index)
+          .reduce((n, item) => n + item.text.length, 0);
+        const within = pos - start;
+        const take = Math.min(rest.length, run.text.length - within);
+        if (take <= 0) {
+          push(typography(run, line.size), rest);
+          pos += rest.length;
+          break;
+        }
+        const slice = rest.slice(0, take);
+        const props = { ...run };
+        if (tabUsed.has(index) || within > 0) delete props.tabX;
+        if (props.squashPrefix && !slice.startsWith(" "))
+          delete props.squashPrefix;
+        if (props.tabX !== undefined) tabUsed.add(index);
+        push(props, slice);
+        rest = rest.slice(take);
+        pos += take;
+      }
+    } else if (op === -1) pos += chars.length;
+    else {
+      push(insertionTypography(source, line.text || "", pos, line.size), chars);
+    }
+  }
+  reseatTabs(source, pieces);
+  const tabbed = source.filter((run) => run.tabX !== undefined);
+  if (tabbed.length === 1 && !pieces.some((piece) => piece.tabX !== undefined)) {
+    const last = pieces[pieces.length - 1];
+    if (
+      last &&
+      (pieces.length > 1 || last.text.trim() === tabbed[0].text.trim())
+    )
+      last.tabX = tabbed[0].tabX;
+  }
+  return pieces.filter((piece) => piece.text);
+}
+
+export function pdfRunsWidth(runs) {
+  return runs.reduce((sum, run) => {
+    const narrow = /times|georgia|garamond|cambria|courier/i.test(run.font || "");
+    const factor = (run.bold ? 0.56 : 0.5) * (narrow ? 0.92 : 1);
+    return sum + [...run.text].length * (run.size || 11) * factor;
+  }, 0);
+}
+
+// Edited lines that no longer fit their original tab slot wrap as normal text.
+// Unchanged lines keep the exact PDF spacing.
+export function pdfEditFlow(line, text, box) {
+  const runs = editedPdfRuns(line, text);
+  if (text === line.text) return { runs, lines: 1, lineRule: "exact" };
+  const indent = Math.max(0, line.x - box.left);
+  const available = Math.max(box.width - indent, (line.size || 11) * 4);
+  const lines = Math.max(
+    1,
+    Math.ceil(pdfRunsWidth(runs) / available - 1e-6),
+  );
+  const tab = runs.find((run) => run.tabX !== undefined);
+  let dropTabs = lines > 1;
+  if (tab && !dropTabs) {
+    const before = [];
+    for (const run of runs) {
+      if (run === tab) break;
+      before.push(run);
+    }
+    const slot = tab.tabX - (box.left + indent);
+    if (pdfRunsWidth(before) > slot - 4) dropTabs = true;
+  }
+  const flowed = dropTabs
+    ? runs.map((run) => {
+        const next = { ...run };
+        delete next.tabX;
+        return next;
+      })
+    : runs;
+  return {
+    runs: flowed,
+    lines,
+    lineRule: lines > 1 || dropTabs ? "auto" : "exact",
+  };
 }

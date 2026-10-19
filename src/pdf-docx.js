@@ -17,7 +17,7 @@ import {
   UnderlineType,
   LineRuleType,
 } from "docx";
-import { getPdfLayout, editedPdfRuns, readablePdfColor } from "./pdf-layout.js";
+import { getPdfLayout, pdfEditFlow, readablePdfColor } from "./pdf-layout.js";
 const twips = (n) => Math.round(n * 20);
 const none = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
 
@@ -70,95 +70,126 @@ export async function buildStyledPdfDocx(layout, paragraphs) {
     .map((page) => {
       const design = pdfPageDesign(page);
       const contentWidth = page.width - design.left - design.right;
+      function paragraph(line, before, left, width, keepNext) {
+        const p = current.get(line.id);
+        if (!p) throw new Error("A PDF source paragraph is missing.");
+        const center = (line.x + line.right) / 2;
+        const centered =
+          line.right - line.x < width * 0.9 &&
+          Math.abs(center - (left + width / 2)) < 6;
+        const alignedRight =
+          !centered &&
+          line.x > left + width * 0.35 &&
+          Math.abs(line.right - (left + width)) < 5;
+        const indent = centered || alignedRight ? 0 : Math.max(0, line.x - left);
+        const flow = pdfEditFlow(line, p.text, { left, width });
+        const runs = flow.runs;
+        return new Paragraph({
+          run: {
+            font: line.runs[0]?.font || "Arial",
+            size: Math.round(line.size * 2),
+          },
+          alignment: centered
+            ? AlignmentType.CENTER
+            : alignedRight
+              ? AlignmentType.RIGHT
+              : AlignmentType.LEFT,
+          indent: { left: twips(indent) },
+          tabStops: runs
+            .filter((r) => r.tabX !== undefined)
+            .map((r) => ({
+              type:
+                r.tabX > page.width * 0.6 ? TabStopType.RIGHT : TabStopType.LEFT,
+              position: twips(r.tabX > page.width * 0.6 ? width : r.tabX - left),
+            })),
+          spacing: {
+            before: twips(before),
+            after: 0,
+            line:
+              flow.lineRule === "auto" ? 276 : twips(line.size * 1.15),
+            lineRule:
+              flow.lineRule === "auto" ? LineRuleType.AUTO : LineRuleType.EXACT,
+          },
+          border: line.rule
+            ? {
+                bottom: {
+                  color: line.rule.color,
+                  size: Math.round(line.rule.thickness * 8),
+                  space: 0,
+                  style: BorderStyle.SINGLE,
+                },
+              }
+            : undefined,
+          keepNext,
+          children: [
+            new Bookmark({
+              id: "rolecraft_source_" + p.id,
+              children: runs.flatMap((r) => {
+                const prefix = r.squashPrefix && r.text.startsWith(" ");
+                return [
+                  ...(r.tabX !== undefined
+                    ? [new TextRun({ children: [new Tab()] })]
+                    : []),
+                  ...(prefix ? [new TextRun({ text: " ", size: 1 })] : []),
+                  new TextRun({
+                    text: prefix ? r.text.slice(1) : r.text,
+                    font: r.font,
+                    size: Math.round(r.size * 2),
+                    bold: r.bold,
+                    italics: r.italics,
+                    color: readablePdfColor(r.color),
+                    underline: r.underline
+                      ? { type: UnderlineType.SINGLE }
+                      : undefined,
+                  }),
+                ];
+              }),
+            }),
+          ],
+        });
+      }
       function blocks(lines, left, width, startY) {
         let previousBottom = startY;
         const ordered = [...lines].sort((a, b) => b.y - a.y || a.x - b.x);
         return ordered.map((line, index) => {
-          const p = current.get(line.id);
-          if (!p) throw new Error("A PDF source paragraph is missing.");
           const top = page.height - line.y - line.size;
           const before = Math.max(0, Math.min(90, top - previousBottom));
           previousBottom = page.height - line.y + line.size * 0.15;
-          const center = (line.x + line.right) / 2;
-          const centered =
-            line.right - line.x < width * 0.9 &&
-            Math.abs(center - (left + width / 2)) < 6;
-          const alignedRight =
-            !centered &&
-            line.x > left + width * 0.35 &&
-            Math.abs(line.right - (left + width)) < 5;
-          const indent =
-            centered || alignedRight ? 0 : Math.max(0, line.x - left);
-          const runs = editedPdfRuns(line, p.text);
-          return new Paragraph({
-            run: {
-              font: line.runs[0]?.font || "Arial",
-              size: Math.round(line.size * 2),
-            },
-            alignment: centered
-              ? AlignmentType.CENTER
-              : alignedRight
-                ? AlignmentType.RIGHT
-                : AlignmentType.LEFT,
-            indent: { left: twips(indent) },
-            tabStops: runs
-              .filter((r) => r.tabX !== undefined)
-              .map((r) => ({
-                type:
-                  r.tabX > page.width * 0.6
-                    ? TabStopType.RIGHT
-                    : TabStopType.LEFT,
-                position: twips(
-                  r.tabX > page.width * 0.6 ? width : r.tabX - left,
-                ),
-              })),
-            spacing: {
-              before: twips(before),
-              after: 0,
-              line: twips(line.size * 1.15),
-              lineRule: LineRuleType.EXACT,
-            },
-            border: line.rule
-              ? {
-                  bottom: {
-                    color: line.rule.color,
-                    size: Math.round(line.rule.thickness * 8),
-                    space: 0,
-                    style: BorderStyle.SINGLE,
-                  },
-                }
-              : undefined,
-            keepNext:
-              index + 1 < ordered.length &&
+          const source = current.get(line.id);
+          return paragraph(
+            line,
+            before,
+            left,
+            width,
+            index + 1 < ordered.length &&
+              source?.text.length < 65 &&
               line.text.length < 65 &&
               line.runs.every((r) => r.bold),
-            children: [
-              new Bookmark({
-                id: "rolecraft_source_" + p.id,
-                children: runs.flatMap((r) => {
-                  const prefix = r.squashPrefix && r.text.startsWith(" ");
-                  return [
-                    ...(r.tabX !== undefined
-                      ? [new TextRun({ children: [new Tab()] })]
-                      : []),
-                    ...(prefix ? [new TextRun({ text: " ", size: 1 })] : []),
-                    new TextRun({
-                      text: prefix ? r.text.slice(1) : r.text,
-                      font: r.font,
-                      size: Math.round(r.size * 2),
-                      bold: r.bold,
-                      italics: r.italics,
-                      color: readablePdfColor(r.color),
-                      underline: r.underline
-                        ? { type: UnderlineType.SINGLE }
-                        : undefined,
-                    }),
-                  ];
-                }),
-              }),
-            ],
-          });
+          );
         });
+      }
+      function columnRows(columns) {
+        const left = [...columns[0]].sort((a, b) => b.y - a.y || a.x - b.x);
+        const right = [...columns[1]].sort((a, b) => b.y - a.y || a.x - b.x);
+        const rows = [];
+        let i = 0,
+          j = 0;
+        while (i < left.length || j < right.length) {
+          const l = left[i],
+            r = right[j];
+          if (l && r && Math.abs(l.y - r.y) <= 3) {
+            rows.push([l, r]);
+            i++;
+            j++;
+          } else if (l && (!r || l.y > r.y)) {
+            rows.push([l, null]);
+            i++;
+          } else {
+            rows.push([null, r]);
+            j++;
+          }
+        }
+        return rows;
       }
       let children;
       if (design.columns) {
@@ -182,34 +213,46 @@ export async function buildStyledPdfDocx(layout, paragraphs) {
               insideHorizontal: none,
               insideVertical: none,
             },
-            rows: [
-              new TableRow({
-                cantSplit: false,
-                children: design.columns.map(
-                  (column, i) =>
-                    new TableCell({
-                      margins: {
-                        top: 0,
-                        bottom: 0,
-                        left: 0,
-                        right: i === 0 ? twips(14) : 0,
-                      },
-                      width: {
-                        size: twips(
-                          i === 0 ? splitWidth : contentWidth - splitWidth,
-                        ),
-                        type: WidthType.DXA,
-                      },
-                      children: blocks(
-                        column,
-                        i === 0 ? design.left : design.split,
-                        i === 0 ? splitWidth - 14 : contentWidth - splitWidth,
-                        columnStart,
-                      ),
-                    }),
-                ),
-              }),
-            ],
+            rows: (() => {
+              let previousBottom = columnStart;
+              const lefts = [design.left, design.split];
+              const widths = [splitWidth - 14, contentWidth - splitWidth];
+              return columnRows(design.columns).map((pair) => {
+                const present = pair.filter(Boolean);
+                const topLine = present.reduce((a, b) => (a.y > b.y ? a : b));
+                const low = present.reduce((a, b) => (a.y < b.y ? a : b));
+                const top = page.height - topLine.y - topLine.size;
+                const before = Math.max(0, Math.min(90, top - previousBottom));
+                previousBottom = page.height - low.y + low.size * 0.15;
+                return new TableRow({
+                  cantSplit: false,
+                  children: pair.map(
+                    (line, i) =>
+                      new TableCell({
+                        margins: {
+                          top: 0,
+                          bottom: 0,
+                          left: 0,
+                          right: i === 0 ? twips(14) : 0,
+                        },
+                        width: {
+                          size: twips(
+                            i === 0 ? splitWidth : contentWidth - splitWidth,
+                          ),
+                          type: WidthType.DXA,
+                        },
+                        children: [
+                          line
+                            ? paragraph(line, before, lefts[i], widths[i], false)
+                            : new Paragraph({
+                                spacing: { before: 0, after: 0 },
+                              }),
+                        ],
+                      }),
+                  ),
+                });
+              });
+            })(),
           }),
         ];
       } else
