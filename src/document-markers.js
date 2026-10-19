@@ -31,6 +31,21 @@ export function renderedParagraphText(element, ignoreLayoutTabs = false) {
   }
   return copy.textContent || "";
 }
+export function renderedCaretOffset(element, ignoreLayoutTabs = false) {
+  const selection =
+    element?.ownerDocument?.getSelection?.() ||
+    element?.ownerDocument?.defaultView?.getSelection?.();
+  if (!selection?.rangeCount || !element) return null;
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.startContainer)) return null;
+  const pre = range.cloneRange();
+  pre.selectNodeContents(element);
+  pre.setEnd(range.startContainer, range.startOffset);
+  if (!ignoreLayoutTabs) return pre.toString().length;
+  const holder = element.ownerDocument.createElement("div");
+  holder.append(pre.cloneContents());
+  return renderedParagraphText(holder, true).length;
+}
 export function canEditRenderedParagraph(source, renderedText) {
   return Boolean(
     source?.editable &&

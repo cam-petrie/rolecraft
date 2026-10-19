@@ -16,6 +16,7 @@ import {
   markPreviewParagraphs,
   normalizeInlineEdit,
   canEditRenderedParagraph,
+  renderedCaretOffset,
   renderedParagraphText,
 } from "./document-markers.js";
 function OriginalPdf({ original }) {
@@ -149,6 +150,7 @@ export default function DocumentViewport({
           w.kind === "docx"
             ? renderedParagraphs
             : renderedParagraphs.map((p, i) => ({ ...p, id: "p" + i }));
+        const replica = Boolean(w.pdfStyle);
         const pdfMarkers = new Map();
         if (w.kind === "pdf") {
           const doc = new DOMParser().parseFromString(xml, "application/xml");
@@ -234,9 +236,35 @@ export default function DocumentViewport({
           if (preview?.paragraphId === p.id)
             el.classList.add("resume-paragraph-preview");
           let html;
+          const plainPdfEdit =
+            w.kind === "pdf" && (!replica || p.role === "entry");
           el.addEventListener("focus", () => {
             handlers.current.onSelect(p.id);
             html = el.innerHTML;
+            // Date tabs and older geometric lines are edited as plain text.
+            // Flowing replica paragraphs already wrap, so they keep their type.
+            if (
+              editable &&
+              plainPdfEdit &&
+              !el.classList.contains("resume-paragraph-editing")
+            ) {
+              const offset = renderedCaretOffset(el, true);
+              el.classList.add("resume-paragraph-editing");
+              el.textContent = p.text;
+              const node = el.firstChild;
+              if (node) {
+                const at = Math.max(
+                  0,
+                  Math.min(offset ?? p.text.length, node.textContent.length),
+                );
+                const selection = window.getSelection();
+                const range = document.createRange();
+                range.setStart(node, at);
+                range.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(range);
+              }
+            }
             if (editable) setEditing(true);
           });
           el.addEventListener("click", (e) => {
@@ -258,6 +286,7 @@ export default function DocumentViewport({
             }
             if (e.key === "Escape") {
               e.preventDefault();
+              el.classList.remove("resume-paragraph-editing");
               el.innerHTML = html;
               el.blur();
             }
@@ -289,10 +318,14 @@ export default function DocumentViewport({
           el.addEventListener("blur", () => {
             setEditing(false);
             if (!editable) return;
+            const editingPdf = el.classList.contains("resume-paragraph-editing");
             const text = normalizeInlineEdit(
-              renderedParagraphText(el, w.kind === "pdf"),
+              editingPdf
+                ? el.textContent || ""
+                : renderedParagraphText(el, w.kind === "pdf"),
             );
             if (text.length > 12000) {
+              el.classList.remove("resume-paragraph-editing");
               el.innerHTML = html;
               setError(
                 "A paragraph cannot exceed 12,000 characters. Your draft was not changed.",
@@ -300,6 +333,10 @@ export default function DocumentViewport({
               return;
             }
             if (text !== p.text) handlers.current.onEdit(p.id, text);
+            else if (editingPdf && html) {
+              el.classList.remove("resume-paragraph-editing");
+              el.innerHTML = html;
+            }
           });
         });
         setMapped(count);
@@ -426,7 +463,9 @@ export default function DocumentViewport({
         <div className="pdf-layout-notice">
           {original
             ? "Original PDF · switch to the draft to edit."
-            : "PDF draft · typography, colors, spacing and simple columns recovered from the original. Check View original; complex graphics and exact pagination may differ."}
+            : w.pdfStyle
+              ? "Editable copy of this PDF. Type, colors, and section style follow the original, and text reflows as you edit. View original shows the uploaded file."
+              : "PDF draft · unchanged lines keep the original type and spacing. An edited line reflows in place so neighboring lines stay readable. Check View original before submitting."}
         </div>
       )}
       <div className="paper-stage" ref={stage}>
@@ -446,7 +485,9 @@ export default function DocumentViewport({
             <OriginalPdf original={w.original} />
           ) : (
             <div
-              className="resume-sheet"
+              className={
+                w.pdfStyle ? "resume-sheet replica-sheet" : "resume-sheet"
+              }
               ref={host}
               onClick={(e) => {
                 if (e.target.closest("a")) e.preventDefault();

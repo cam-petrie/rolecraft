@@ -11,6 +11,7 @@ import {
   pdfPaintedText,
   pdfPageLines,
   editedPdfRuns,
+  pdfEditFlow,
 } from "../src/pdf-layout.js";
 
 test("embedded Times faces override the PDF engine's generic sans-serif fallback", () => {
@@ -144,6 +145,43 @@ test("PDF import retains text alongside mixed typography and exact run colors", 
   assert.equal(pdfFont("Helvetica-Oblique").italics, true);
 });
 
+test("a wide positioning space keeps the date and becomes a tab", () => {
+  const content = {
+    styles: { f1: { fontFamily: "sans-serif" } },
+    items: [
+      {
+        str: "Example Company",
+        fontName: "f1",
+        transform: [11, 0, 0, 11, 72, 658],
+        width: 98,
+      },
+      {
+        str: " ",
+        fontName: "f1",
+        transform: [11, 0, 0, 11, 170, 658],
+        width: 320,
+      },
+      {
+        str: "2025",
+        fontName: "f1",
+        transform: [11, 0, 0, 11, 490, 658],
+        width: 24,
+        hasEOL: true,
+      },
+    ],
+  };
+  const page = pdfPageLines(
+    content,
+    { width: 612, height: 792 },
+    { f1: "Helvetica-Bold" },
+    [],
+  );
+  assert.equal(page.lines[0].text, "Example Company  2025");
+  const date = page.lines[0].runs.find((run) => run.text.includes("2025"));
+  assert.equal(date.tabX, 490);
+  assert.equal(date.bold, true);
+});
+
 test("PDF edits inherit neighboring run styles while retaining unchanged emphasis", () => {
   const line = {
     text: "Built APIs.",
@@ -157,6 +195,100 @@ test("PDF edits inherit neighboring run styles while retaining unchanged emphasi
   assert.equal(runs[0].bold, true);
   assert.equal(runs[0].color, "125C52");
   assert.equal(runs.at(-1).bold, false);
+});
+
+test("inserted words continue the word they extend and leave date tabs in place", () => {
+  const line = {
+    text: "Example Company  2025",
+    x: 35,
+    right: 580,
+    size: 10,
+    runs: [
+      {
+        text: "Example Company",
+        bold: true,
+        font: "Times New Roman",
+        size: 10,
+        color: "000000",
+      },
+      {
+        text: "  2025",
+        bold: true,
+        font: "Times New Roman",
+        size: 10,
+        color: "111111",
+        tabX: 400,
+      },
+    ],
+  };
+  const runs = editedPdfRuns(line, "Example Company Worldwide  2025");
+  assert.equal(runs.map((r) => r.text).join(""), "Example Company Worldwide  2025");
+  assert.equal(runs.filter((r) => r.tabX !== undefined).length, 1);
+  assert.equal(runs.find((r) => r.tabX !== undefined).text.trim(), "2025");
+  const inserted = runs.find((r) => r.text.includes("Worldwide"));
+  assert.equal(inserted.tabX, undefined);
+  assert.equal(inserted.font, "Times New Roman");
+  assert.equal(inserted.bold, true);
+  assert.equal(inserted.color, "000000");
+  const styled = {
+    text: "Built APIs.",
+    runs: [
+      { text: "Built ", bold: false, font: "Arial", size: 11, color: "000000" },
+      {
+        text: "APIs.",
+        bold: true,
+        italics: true,
+        font: "Arial",
+        size: 11,
+        color: "125C52",
+        underline: true,
+      },
+    ],
+  };
+  const prefix = editedPdfRuns(styled, "Built fast APIs.");
+  const word = prefix.find((r) => r.text.includes("fast"));
+  assert.equal(word.bold, true);
+  assert.equal(word.italics, true);
+  assert.equal(word.color, "125C52");
+  assert.equal(word.underline, true);
+  assert.equal(word.tabX, undefined);
+});
+
+test("an edited line that outgrows its date tab wraps instead of keeping the tab", async () => {
+  const line = {
+    text: "Role  2025",
+    x: 36,
+    y: 400,
+    right: 200,
+    size: 11,
+    runs: [
+      { text: "Role", bold: true, font: "Arial", size: 11, color: "000000" },
+      {
+        text: "  2025",
+        bold: false,
+        font: "Arial",
+        size: 11,
+        color: "000000",
+        tabX: 80,
+      },
+    ],
+  };
+  const text =
+    "Role expanded into a much longer responsibility that cannot stay on the date line";
+  const flow = pdfEditFlow(line, text, { left: 36, width: 320 });
+  assert.equal(flow.lineRule, "auto");
+  assert.ok(flow.lines > 1);
+  assert.equal(flow.runs.some((r) => r.tabX !== undefined), false);
+  assert.equal(flow.runs.map((r) => r.text).join(""), text);
+  const blob = await buildStyledPdfDocx(
+    { pages: [{ width: 400, height: 500, lines: [{ ...line, id: "p0" }] }] },
+    [{ id: "p0", text, editable: true }],
+  );
+  const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+  const xml = await zip.file("word/document.xml").async("string");
+  assert.match(xml, /w:lineRule="auto"/);
+  assert.equal(xml.includes("<w:tab/>"), false);
+  assert.ok(xml.includes("cannot stay on the date line"));
 });
 
 const line = (id, text, x, right, y, size = 11, bold = false) => ({
@@ -216,8 +348,15 @@ test("simple PDF columns use a borderless table without mixing source paragraphs
   const xml = await zip.file("word/document.xml").async("string");
   assert.match(xml, /w:tblLayout w:type="fixed"/);
   assert.match(xml, /w:val="none"/);
+  assert.equal(xml.match(/<w:tr[ >]/g).length, 3);
   assert.ok(
-    xml.indexOf("rolecraft_source_l2") < xml.indexOf("rolecraft_source_r0"),
+    xml.indexOf("rolecraft_source_l0") < xml.indexOf("rolecraft_source_r0"),
+  );
+  assert.ok(
+    xml.indexOf("rolecraft_source_r0") < xml.indexOf("rolecraft_source_l1"),
+  );
+  assert.ok(
+    xml.indexOf("rolecraft_source_l2") < xml.indexOf("rolecraft_source_r2"),
   );
 });
 
