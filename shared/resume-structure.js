@@ -37,8 +37,9 @@ export function preserveRewriteStructure(paragraphs, rewrite) {
   if (!format) return rewrite;
   let after = rewrite.after.trim().replace(bullet, "");
   if (format.kind === "skills-list") {
-    if (format.label && after.startsWith(format.label.trim()))
-      after = after.slice(format.label.trim().length).trim();
+    // The generated label may use different spaces around its colon. Keep the
+    // source label exactly once, including its original formatting whitespace.
+    after = after.replace(/^[^:\n]{1,65}:\s*/, "");
     const entries = skillItems(after.replace(/,\s*$/, ""));
     if (entries.length < 2 || entries.some((s) => !s || s.split(/\s+/).length > 8 || prose.test(s) || /[\n\r]|[.!?](?:\s|$)/.test(s)))
       throw new Error("This skills suggestion changed a list into prose. Request a new suggestion using comma-separated skill names. No edits were applied.");

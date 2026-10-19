@@ -29,6 +29,7 @@ test("native Word bullets do not acquire duplicate literal markers", () => {
 test("skills rewrites retain labels and separators and block sentence replacements", () => {
   const r = { paragraphId: "p1", before: skills[1].text, after: "SQL, Python, JavaScript", reason: "Prioritize" };
   assert.equal(applyRewrite(skills, r)[1].text, "Languages: SQL, Python, JavaScript");
+  assert.equal(preserveRewriteStructure([paragraph("p", "Languages :  Python, SQL")], { paragraphId: "p", after: "Languages: SQL, Python" }).after, "Languages :  SQL, Python");
   for (const after of ["Experienced in Python and SQL.", "Python, developed APIs with SQL", "Python, SQL. Built APIs."]) {
     assert.throws(() => applyRewrite(skills, { ...r, after }), /list into prose/);
   }
