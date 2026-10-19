@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { preserveRewriteStructure } from "./resume-structure.js";
 const text = z.string().min(1).max(10000);
 export const paragraphSchema = z.object({
   id: z.string().max(100),
   text: z.string().max(12000),
   editable: z.boolean(),
+  list: z.boolean().optional(),
 });
 export const roleSchema = z.object({
   title: z.string().max(300),
@@ -99,6 +101,7 @@ export function assertEvidence(task, data, paragraphs, role) {
       throw new Error(
         "AI rewrite did not match an editable source paragraph. Please try again.",
       );
+    Object.assign(r, preserveRewriteStructure(paragraphs, r));
   }
   if (task === "analyze")
     for (const m of data.matches)
@@ -141,7 +144,8 @@ export function applyRewrite(paragraphs, rewrite) {
     throw new Error(
       "This paragraph has changed. Request a new suggestion before applying.",
     );
+  const structured = preserveRewriteStructure(paragraphs, rewrite);
   return paragraphs.map((p) =>
-    p.id === rewrite.paragraphId ? { ...p, text: rewrite.after } : p,
+    p.id === rewrite.paragraphId ? { ...p, text: structured.after } : p,
   );
 }

@@ -90,6 +90,9 @@ export async function buildStyledPdfDocx(layout, paragraphs) {
           const indent =
             centered || alignedRight ? 0 : Math.max(0, line.x - left);
           const runs = editedPdfRuns(line, p.text);
+          const marker = line.text.match(/^[•●○▪▫◦‣⁃\uf0b7\uf0a7\u25a0\u25a1–—*-]\s*/u)?.[0];
+          const bodyRun = marker && line.runs.find((r) => r.x > line.x + 3 && r.text.trim() && !marker.includes(r.text.trim()));
+          const hanging = marker ? Math.max(6, (bodyRun?.x ?? line.x + line.size) - line.x) : 0;
           return new Paragraph({
             run: {
               font: line.runs[0]?.font || "Arial",
@@ -100,7 +103,7 @@ export async function buildStyledPdfDocx(layout, paragraphs) {
               : alignedRight
                 ? AlignmentType.RIGHT
                 : AlignmentType.LEFT,
-            indent: { left: twips(indent) },
+            indent: { left: twips(indent + hanging), ...(hanging ? { hanging: twips(hanging) } : {}) },
             tabStops: runs
               .filter((r) => r.tabX !== undefined)
               .map((r) => ({

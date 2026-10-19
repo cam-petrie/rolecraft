@@ -344,7 +344,14 @@ export function editedPdfRuns(line, text) {
         pos++;
       }
     else if (op === -1) pos += chars.length;
-    else runs[owners[Math.max(0, pos - 1)] ?? 0].text += chars;
+    else {
+      let owner = owners[Math.max(0, pos - 1)] ?? 0;
+      // Insertions immediately after a standalone symbol must inherit the body
+      // font, rather than the PDF's Symbol/Courier bullet font.
+      if (/^[\s•●○▪▫◦‣⁃\uf0b7\uf0a7\u25a0\u25a1–—*-]+$/u.test(line.runs[owner].text))
+        owner = owners[pos] ?? owner;
+      runs[owner].text += chars;
+    }
   }
   return runs.filter((r) => r.text);
 }

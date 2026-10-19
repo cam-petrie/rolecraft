@@ -1,4 +1,5 @@
 import { oauth, authReady, authenticate, selectApiKey } from "./auth.js";
+import { rewriteFormatHints } from "../shared/resume-structure.js";
 import {
   requestSchema,
   analysisSchema,
@@ -258,12 +259,12 @@ export async function runAI(body, env, fetcher = fetch) {
         task +
         "\nRequired JSON shape:\n" +
         JSON.stringify(responseShape(input.task)) +
-        "\nFor matches and interview mappings, cite the supporting paragraphId; do not generate evidence text. For rewrites, select paragraphId from the allowed editable IDs and return after and reason only. Do not return before. The server supplies exact original text for all citations. Every requirement must be selected from the supplied schema's job description quotes.",
+        "\nFor matches and interview mappings, cite the supporting paragraphId; do not generate evidence text. For rewrites, select paragraphId from the allowed editable IDs and return after and reason only. Do not return before. The server supplies exact original text for all citations. Every requirement must be selected from the supplied schema's job description quotes. Preserve each paragraph's structure as specified by paragraphFormats: bullets stay bullets; skills lists keep their original label and comma-separated short skill names, never prose sentences. Do not change list structure even when the requested direction asks for stronger wording.",
       // JSON mode validates the input messages for an explicit JSON instruction.
       // Keep this in the conversation, rather than only top-level instructions.
       input: [
         { role: "system", content: "Return the requested result as JSON." },
-        { role: "user", content: JSON.stringify(input) },
+        { role: "user", content: JSON.stringify({ ...input, paragraphFormats: rewriteFormatHints(input.paragraphs) }) },
       ],
       text: { format: { type: "json_schema", name: `rolecraft_${input.task}`, strict: true, schema: outputSchema(responseShape(input.task), input) } },
       max_output_tokens: input.task === "rewrite" ? 1500 : input.task === "analyze" ? 4000 : 8000,

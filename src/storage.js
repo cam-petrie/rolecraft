@@ -114,8 +114,15 @@ export async function fromBackup(file) {
     throw new Error("Original file is too large.");
   if (w.kind !== "demo") {
     const source = await importResume(new File([bytes], w.filename));
-    if (JSON.stringify(source.baseline) !== JSON.stringify(w.baseline))
+    const sourceText = (ps) => ps.map(({ id, text, editable }) => ({ id, text, editable }));
+    if (JSON.stringify(sourceText(source.baseline)) !== JSON.stringify(sourceText(w.baseline)))
       throw new Error("Backup baseline does not match its original file.");
+    // Recover source list metadata for older backups; never trust it from JSON.
+    for (const ps of [w.baseline, w.paragraphs, ...w.versions.map((v) => v.paragraphs)])
+      ps.forEach((p, i) => {
+        if (source.baseline[i].list) p.list = true;
+        else delete p.list;
+      });
   }
   for (const ps of [w.paragraphs, ...w.versions.map((v) => v.paragraphs)])
     if (ps.some((p, i) => !p.editable && p.text !== w.baseline[i].text))

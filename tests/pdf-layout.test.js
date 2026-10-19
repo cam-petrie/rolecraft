@@ -258,3 +258,18 @@ test("embedded-font exports retain section borders, link underlines and right-al
   assert.match(xml, /w:u w:val="single"/);
   assert.ok(xml.includes("Times New Roman"));
 });
+
+test("edited PDF bullets keep hanging indentation and body font after a symbol run", async () => {
+  const source = { ...line("p0", "• Built APIs.", 48, 230, 700), runs: [
+    { text: "• ", size: 11, font: "Symbol", x: 48, right: 53 },
+    { text: "Built APIs.", size: 11, font: "Times New Roman", x: 60, right: 230 },
+  ] };
+  const runs = editedPdfRuns(source, "• Designed APIs.");
+  assert.equal(runs.find((r) => r.text.includes("Designed")).font, "Times New Roman");
+  const blob = await buildStyledPdfDocx({ pages: [{ width: 612, height: 792, lines: [source] }] }, [{ id: "p0", text: "• Designed APIs.", editable: true }]);
+  const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+  const xml = await zip.file("word/document.xml").async("string");
+  assert.match(xml, /w:hanging="240"/);
+  assert.match(xml, /• /);
+  assert.match(xml, /Designed/);
+});

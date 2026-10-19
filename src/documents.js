@@ -23,6 +23,7 @@ export function extractDocx(xml) {
   return nodes(doc, "p")
     .map((p, index) => ({
       id: `p${index}`,
+      ...(nodes(p, "numPr").length ? { list: true } : {}),
       text: nodes(p, "t")
         .map((t) => t.textContent)
         .join(""),
