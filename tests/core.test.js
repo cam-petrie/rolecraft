@@ -275,7 +275,8 @@ test("OpenAI request is non-stored and schema/evidence checked", async () => {
       assert.equal(body.model, "test-model");
       assert.equal(body.text.format.type, "json_schema");
       assert.equal(body.text.format.strict, true);
-      assert.deepEqual(body.text.format.schema.properties.paragraphId.enum, ["p6"]);
+      assert.equal(body.text.format.schema.properties.paragraphId.type, "string");
+      assert.equal(body.text.format.schema.properties.paragraphId.enum, undefined);
       assert.equal(body.text.format.schema.properties.before, undefined);
       assert.equal(body.max_output_tokens, 1500);
       assert.equal(body.input[0].role, "system");
@@ -329,21 +330,19 @@ test("structured rewrites attach exact source bytes and reject unsafe targets an
   await assert.rejects(() => runAI({ ...input, task: "analyze" }, { OPENAI_API_KEY: "test" }, response({ ...demoAnalysis, rewrites: [suggestion, ...demoAnalysis.rewrites.slice(1)] })));
 });
 
-test("analysis schema restricts targets and job citations to supplied source data", async () => {
+test("analysis schema stays compact and gateway validates resume IDs and job citations", async () => {
   const w = createDemo();
   w.paragraphs[0].editable = false;
-  const normalize = (s) => s.toLowerCase().replace(/\s+/g, " ").trim();
   await runAI({ task: "analyze", paragraphs: w.paragraphs, role: w.role }, { OPENAI_API_KEY: "test" }, async (_url, options) => {
     const schema = JSON.parse(options.body).text.format.schema;
     const rewrite = schema.properties.rewrites.items;
     assert.equal(schema.properties.matches.items.properties.evidence, undefined);
-    assert.ok(schema.properties.matches.items.properties.paragraphId.enum.includes(w.paragraphs[0].id));
+    assert.equal(schema.properties.matches.items.properties.paragraphId.type, "string");
+    assert.equal(schema.properties.matches.items.properties.paragraphId.enum, undefined);
     assert.equal(rewrite.properties.before, undefined);
-    assert.ok(!rewrite.properties.paragraphId.enum.includes(w.paragraphs[0].id));
-    for (const quote of schema.properties.matches.items.properties.requirement.enum)
-      assert.ok(normalize(w.role.text).includes(normalize(quote)));
-    const data = { ...demoAnalysis, matches: demoAnalysis.matches.map((m) => ({ ...m, requirement: schema.properties.matches.items.properties.requirement.enum[0] })) };
-    return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify(data) }] }] });
+    assert.equal(rewrite.properties.paragraphId.enum, undefined);
+    assert.equal(schema.properties.matches.items.properties.requirement.enum, undefined);
+    return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify(demoAnalysis) }] }] });
   });
 });
 
@@ -356,7 +355,8 @@ test("match and interview evidence comes from source IDs, including Unicode and 
     const schema = JSON.parse(options.body).text.format.schema;
     const field = data.matches ? "matches" : "mappings";
     assert.equal(schema.properties[field].items.properties.evidence, undefined);
-    assert.ok(schema.properties[field].items.properties.paragraphId.enum.includes(first.id));
+    assert.equal(schema.properties[field].items.properties.paragraphId.type, "string");
+    assert.equal(schema.properties[field].items.properties.paragraphId.enum, undefined);
     return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify(data) }] }] });
   };
   const analysis = { ...demoAnalysis, matches: demoAnalysis.matches.map(({ evidence, ...m }) => ({ ...m, paragraphId: first.id, requirement: w.role.text })) };

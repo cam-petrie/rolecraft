@@ -1,5 +1,5 @@
 import { oauth, authReady, authenticate, selectApiKey } from "./auth.js";
-import { paragraphStructures, rewriteFormatHints } from "../shared/resume-structure.js";
+import { rewriteFormatHints } from "../shared/resume-structure.js";
 import {
   requestSchema,
   analysisSchema,
@@ -81,42 +81,20 @@ function responseShape(task) {
     shape.matches = shape.matches.map((match) => ({ ...match, paragraphId: "p1" }));
   return shape;
 }
-const MAX_SCHEMA_PARAGRAPH_IDS = 390;
-function boundedTargets(targets, limit = MAX_SCHEMA_PARAGRAPH_IDS) {
-  if (targets.length <= limit) return targets;
-  return Array.from({ length: limit }, (_, i) =>
-    targets[Math.round((i * (targets.length - 1)) / (limit - 1))],
-  );
-}
-function outputSchema(value, input, key = "", parent = "") {
+function outputSchema(value, key = "") {
   if (Array.isArray(value))
-    return { type: "array", items: outputSchema(value[0], input, key === "paragraphIds" ? "paragraphId" : key) };
+    return { type: "array", items: outputSchema(value[0], key === "paragraphIds" ? "paragraphId" : key) };
   if (value && typeof value === "object") {
     const properties = Object.fromEntries(Object.entries(value)
       .filter(([name]) => name !== "before")
-      .map(([name, item]) => [name, outputSchema(item, input, name, key)]));
+      .map(([name, item]) => [name, outputSchema(item, name)]));
     return { type: "object", properties, required: Object.keys(properties), additionalProperties: false };
   }
-  if (key === "paragraphId") {
-    let targets = input.paragraphs.filter((p) => input.task === "prep" || parent === "matches" ||
-      (p.editable && (input.task !== "rewrite" || p.id === input.paragraphId)));
-    if (input.task === "analyze" && parent === "rewrites") {
-      const formats = paragraphStructures(input.paragraphs);
-      const bullets = targets.filter((p) => formats.get(p.id)?.kind === "bullet");
-      if (bullets.length >= 3) targets = bullets;
-    }
-    targets = boundedTargets(targets);
-    return { type: "string", enum: targets.map((p) => p.id) };
-  }
+  // Keep data-dependent choices out of the schema: repeating long resume-ID
+  // and job-quote enums can exceed Structured Outputs' aggregate limits.
+  // attachRewriteSources/assertEvidence validate every generated ID and quote.
+  if (key === "paragraphId" || key === "requirement") return { type: "string" };
   if (key === "stage") return { type: "string", enum: ["screening", "technical"] };
-  if (key === "requirement") {
-    const parts = input.role.text.split(/(?<=[.!?;])\s+|\n+/).map((s) => s.trim()).filter(Boolean);
-    // Keep below OpenAI's large-enum limits, grouping adjacent source spans.
-    const width = Math.max(1, Math.ceil(parts.length / 200));
-    const quotes = [];
-    for (let i = 0; i < parts.length; i += width) quotes.push(parts.slice(i, i + width).join(" "));
-    return { type: "string", enum: [...new Set(quotes)] };
-  }
   if (key === "score") return { type: "integer", minimum: 0, maximum: 100 };
   return { type: "string" };
 }
@@ -129,7 +107,7 @@ function attachRewriteSources(task, data, paragraphs) {
     if (!source?.editable)
       throw new Error("AI selected a missing or protected paragraph. Please retry.");
     // Legacy responses with a supplied quote still face the exact-match check.
-    // New structured responses select the source by a constrained ID only.
+    // New structured responses select the source by ID; verify it server-side.
     if (rewrite.before === undefined) rewrite.before = source.text;
   }
   const citations = task === "analyze" ? data.matches : task === "prep" ? data.mappings : [];
@@ -282,7 +260,7 @@ export async function runAI(body, env, fetcher = fetch) {
         { role: "system", content: "Return the requested result as JSON." },
         { role: "user", content: JSON.stringify({ ...input, paragraphFormats: rewriteFormatHints(input.paragraphs) }) },
       ],
-      text: { format: { type: "json_schema", name: `rolecraft_${input.task}`, strict: true, schema: outputSchema(responseShape(input.task), input) } },
+      text: { format: { type: "json_schema", name: `rolecraft_${input.task}`, strict: true, schema: outputSchema(responseShape(input.task)) } },
       max_output_tokens: input.task === "rewrite" ? 1500 : input.task === "analyze" ? 4000 : 8000,
     }),
   });
