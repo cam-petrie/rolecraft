@@ -24,7 +24,7 @@ test("Greenhouse discovery excludes active and duplicate jobs, caps at 50 and on
   const jobs = [job(1), ...Array.from({ length: 60 }, (_, i) => job(i + 2)), job(2), job(99, ""), { id: 100, title: "Incomplete" }];
   const found = await fetchCompanyJobs(role, async (url, options) => {
     assert.equal(url, "https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true");
-    assert.equal(options.redirect, "error");
+    assert.equal(options.redirect, "manual");
     assert.equal(options.headers.Authorization, undefined);
     return Response.json({ jobs });
   });
@@ -33,6 +33,17 @@ test("Greenhouse discovery excludes active and duplicate jobs, caps at 50 and on
   assert.ok(found.roles.every((r) => !sameJob(r.url, role.url) && r.text === role.text));
   assert.equal(plainJobText("&amp;lt;p&amp;gt;APIs &amp;amp; design&amp;lt;/p&amp;gt;"), "APIs & design");
   await assert.rejects(() => fetchCompanyJobs({ ...role, url: "https://workday.example/jobs/1" }), /direct Greenhouse/);
+});
+test("company discovery rejects redirects before following them or consuming the feed", async () => {
+  for (const status of [301, 302, 303, 307, 308]) {
+    let calls = 0;
+    await assert.rejects(() => fetchCompanyJobs(role, async (_url, options) => {
+      calls++;
+      assert.equal(options.redirect, "manual");
+      return new Response("Redirected", { status, headers: { Location: "https://untrusted.example/feed" } });
+    }), /redirected its public feed/);
+    assert.equal(calls, 1);
+  }
 });
 test("Lever EU and Ashby feeds preserve descriptions and reject foreign board URLs and unlisted jobs", async () => {
   const lever = await fetchCompanyJobs({ ...role, url: "https://jobs.eu.lever.co/acme/active" }, async (url) => {

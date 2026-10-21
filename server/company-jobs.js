@@ -15,7 +15,13 @@ export function plainJobText(html) {
   return s.replace(/[ \t]+/g, " ").replace(/\n\s*\n/g, "\n").trim();
 }
 async function feedJSON(url, fetcher) {
-  const r = await fetcher(url, { redirect: "error", signal: AbortSignal.timeout(25000), headers: { Accept: "application/json" } });
+  // Workers supports manual/follow only. Never follow a board feed redirect
+  // into an unverified host or rely on the unsupported "error" mode.
+  const r = await fetcher(url, { redirect: "manual", signal: AbortSignal.timeout(25000), headers: { Accept: "application/json" } });
+  if (r.status >= 300 && r.status < 400) {
+    await r.body?.cancel();
+    throw new Error("The company job board redirected its public feed. Check the listing URL or try again later.");
+  }
   if (!r.ok) throw new Error("The company job board is unavailable. Check the listing URL and try again.");
   const reader = r.body?.getReader();
   if (!reader) throw new Error("The company job board returned no listings.");
