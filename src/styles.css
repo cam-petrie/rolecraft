@@ -3708,6 +3708,11 @@ main {
 .company-comparison-card > small { display: block; color: var(--muted); font-size: 10px; line-height: 1.7; }
 .company-comparison-card .panel-primary { margin: 10px 0; }
 .company-results-button { margin-top: 12px; }
+.workbench-meta .company-roles-shortcut { white-space: nowrap; border-color: var(--teal); }
+@media (max-width: 950px) {
+  .workbench-meta { height: auto; min-height: 34px; flex-wrap: wrap; }
+  .workbench-meta > div { flex-wrap: wrap; gap: 8px; }
+}
 dialog.company-dialog { width: min(820px, calc(100vw - 24px)); max-width: 820px; max-height: calc(100dvh - 32px); }
 .company-dialog .modal-top { position: sticky; top: 0; background: inherit; z-index: 2; }
 .company-dialog .modal-top h2 { margin-top: 5px; }

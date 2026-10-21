@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   ChevronDown,
   LayoutTemplate,
+  BarChart3,
 } from "lucide-react";
 import DocumentViewport from "./DocumentViewport.jsx";
 import ResumeLayoutPicker from "./ResumeLayoutPicker.jsx";
@@ -47,6 +48,8 @@ export default function ResumeWorkspace({
 }) {
   const [preview, setPreview] = useState(null);
   const [layoutPicker, setLayoutPicker] = useState(false);
+  const [comparisonOpen, setComparisonOpen] = useState(false);
+  useEffect(() => setComparisonOpen(false), [w.id]);
   useEffect(() => {
     if (tab === "editor" && !w.resumeLayout) setLayoutPicker(true);
     else setLayoutPicker(false);
@@ -82,6 +85,7 @@ export default function ResumeWorkspace({
     onSelect(r.paragraphId);
     setPreview({ ...r, index });
   }
+  const comparison = <CompanyComparison w={w} busy={busy} comparing={comparing} onCompare={onCompare} onCancel={onCancelComparison} onUseRole={onUseRole} error={error} open={comparisonOpen} onOpenChange={setComparisonOpen} showCard={tab === "analysis"} />;
   return (
     <div className="resume-workbench">
       <div className="workbench-meta">
@@ -94,6 +98,9 @@ export default function ResumeWorkspace({
           <span className="workbench-edits">{edits} edited</span>
         </div>
         <div>
+          {w.analysis && <button className="btn company-roles-shortcut" onClick={() => setComparisonOpen(true)}>
+            <BarChart3 size={14} /><span>Company roles</span>
+          </button>}
           {tab === "editor" && <button className="btn layout-switch" disabled={busy} onClick={() => setLayoutPicker(true)}>
             <LayoutTemplate size={14}/><span>Layout: {selectedResumeLayout(w.resumeLayout).name}</span><ChevronDown size={13}/>
           </button>}
@@ -220,6 +227,7 @@ export default function ResumeWorkspace({
                       <p>Subjective assessment, not an ATS score.</p>
                     </div>
                   </div>
+                  {comparison}
                   {stale && (
                     <div className="panel-warning">
                       <AlertTriangle size={14} />
@@ -236,7 +244,6 @@ export default function ResumeWorkspace({
                     <RotateCcw size={14} />
                     Reanalyze current draft
                   </button>
-                  <CompanyComparison w={w} busy={busy} comparing={comparing} onCompare={onCompare} onCancel={onCancelComparison} onUseRole={onUseRole} error={error} />
                   <details className="fit-section" open>
                     <summary>
                       <CheckCircle2 size={16} />
@@ -446,6 +453,7 @@ export default function ResumeWorkspace({
                 </button>
               </>
             )}
+            {tab !== "analysis" && w.analysis && comparison}
           </div>
           <div className="panel-bottom-note">
             <ShieldCheck size={12} />

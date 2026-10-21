@@ -3,8 +3,8 @@ import { BarChart3, ArrowUpRight, X, LoaderCircle, Square, AlertTriangle } from 
 import { jobBoardSource, sameJob } from "../shared/job-boards.js";
 import { comparisonIsStale } from "./company-comparison.js";
 
-export default function CompanyComparison({ w, busy, comparing, onCompare, onCancel, onUseRole, error }) {
-  const [open, setOpen] = useState(false);
+export default function CompanyComparison({ w, busy, comparing, onCompare, onCancel, onUseRole, error, open, onOpenChange, showCard = true }) {
+  const setOpen = onOpenChange;
   const [search, setSearch] = useState("");
   const dialog = useRef();
   useEffect(() => {
@@ -25,7 +25,7 @@ export default function CompanyComparison({ w, busy, comparing, onCompare, onCan
   const active = (row) => sameJob(row.role.url, w.role.url) || row.role.url === w.role.url;
   const baseline = ranked.find(active)?.score;
   const start = () => { setOpen(true); setSearch(""); onCompare(); };
-  return <section className="company-comparison-card" aria-label="Company role comparison">
+  return <>{showCard && <section className="company-comparison-card" aria-label="Company role comparison">
     <div className="company-comparison-title"><BarChart3 size={18} /><h3>More paths at {w.role.company || "this company"}</h3></div>
     <p>Compare your current resume with up to 50 other open roles on the same company job board.</p>
     {supported ? <>
@@ -35,6 +35,7 @@ export default function CompanyComparison({ w, busy, comparing, onCompare, onCan
     {comparison && <button className="text-button company-results-button" onClick={() => setOpen(true)}>
       {comparing ? processing ? `Scoring roles · ${completed}/${rows.length}` : "Finding company roles…" : stale ? "View previous comparison" : `View ${ranked.length} ranked roles`}<ArrowUpRight size={14} />
     </button>}
+    </section>}
     {open && <dialog ref={dialog} className="wide company-dialog" aria-label="Company role comparison" onCancel={(e) => { e.preventDefault(); setOpen(false); }} onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
       <div className="modal-top"><div><span className="panel-eyebrow">EXPLORE THE SAME COMPANY</span><h2>Where else could you fit?</h2></div>
         <button className="icon-btn" aria-label="Close company comparison" onClick={() => setOpen(false)}><X size={20} /></button></div>
@@ -42,6 +43,8 @@ export default function CompanyComparison({ w, busy, comparing, onCompare, onCan
         <p className="company-results-intro">{w.role.company || comparison?.source.board || "Your company"} · Same resume, same scoring rubric. Roles are ordered from highest to lowest fit.</p>
         {w.kind === "demo" && <p className="comparison-example">Sample comparison · fictional roles and fixed scores.</p>}
         {error && <div className="notice error" role="alert">{error}</div>}
+        {!supported && <div className="notice info">Add a direct Greenhouse, Lever or Ashby listing URL in Resume to enable company comparison.</div>}
+        {!comparison && !comparing && supported && <div><button className="btn primary" disabled={busy} onClick={start}><BarChart3 size={14} />Compare company roles</button><p className="comparison-method">Scores the current role plus up to 50 alternatives. Uses API credits only when you start this comparison.</p></div>}
         {stale && <div className="notice warning"><AlertTriangle size={16} />The resume or company board has changed. Run a fresh comparison before choosing a role from these scores.</div>}
         {comparing && <div className="comparison-progress" role="status">
           <span><LoaderCircle size={15} className="spin" />{processing ? `${completed} of ${rows.length} roles processed` : "Finding open company roles…"}</span>
@@ -82,5 +85,5 @@ export default function CompanyComparison({ w, busy, comparing, onCompare, onCan
         {!comparison && !comparing && <p className="panel-intro">Start a comparison to see the ranked roles here. Any connection error appears on the page when you close this window.</p>}
       </div>
     </dialog>}
-  </section>;
+  </>;
 }
