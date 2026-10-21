@@ -1,5 +1,5 @@
 import { oauth, authReady, authenticate, selectApiKey } from "./auth.js";
-import { rewriteFormatHints } from "../shared/resume-structure.js";
+import { paragraphStructures, rewriteFormatHints } from "../shared/resume-structure.js";
 import {
   requestSchema,
   analysisSchema,
@@ -81,6 +81,13 @@ function responseShape(task) {
     shape.matches = shape.matches.map((match) => ({ ...match, paragraphId: "p1" }));
   return shape;
 }
+const MAX_SCHEMA_PARAGRAPH_IDS = 390;
+function boundedTargets(targets, limit = MAX_SCHEMA_PARAGRAPH_IDS) {
+  if (targets.length <= limit) return targets;
+  return Array.from({ length: limit }, (_, i) =>
+    targets[Math.round((i * (targets.length - 1)) / (limit - 1))],
+  );
+}
 function outputSchema(value, input, key = "", parent = "") {
   if (Array.isArray(value))
     return { type: "array", items: outputSchema(value[0], input, key === "paragraphIds" ? "paragraphId" : key) };
@@ -91,8 +98,14 @@ function outputSchema(value, input, key = "", parent = "") {
     return { type: "object", properties, required: Object.keys(properties), additionalProperties: false };
   }
   if (key === "paragraphId") {
-    const targets = input.paragraphs.filter((p) => input.task === "prep" || parent === "matches" ||
+    let targets = input.paragraphs.filter((p) => input.task === "prep" || parent === "matches" ||
       (p.editable && (input.task !== "rewrite" || p.id === input.paragraphId)));
+    if (input.task === "analyze" && parent === "rewrites") {
+      const formats = paragraphStructures(input.paragraphs);
+      const bullets = targets.filter((p) => formats.get(p.id)?.kind === "bullet");
+      if (bullets.length >= 3) targets = bullets;
+    }
+    targets = boundedTargets(targets);
     return { type: "string", enum: targets.map((p) => p.id) };
   }
   if (key === "stage") return { type: "string", enum: ["screening", "technical"] };
@@ -294,8 +307,13 @@ export async function runAI(body, env, fetcher = fetch) {
       throw new Error("The gateway model is unavailable to the selected OpenAI key. Check OPENAI_MODEL and model access.");
     if (r.status === 400 && param === "input" && /json/i.test(failure?.error?.message || ""))
       throw new Error("OpenAI rejected the gateway’s JSON input format. The gateway needs an update.");
-    if (r.status === 400)
-      throw new Error("OpenAI rejected the gateway request format (400). Please report this gateway error; changing your API key may not fix it.");
+    if (r.status === 400 && (code === "invalid_json_schema" || param === "text.format.schema"))
+      throw new Error("OpenAI rejected Rolecraft’s structured response schema. The gateway schema may exceed OpenAI’s limits or need an update.");
+    if (r.status === 400) {
+      const safeParam = typeof param === "string" && /^[a-zA-Z0-9_.-]{1,80}$/.test(param) ? ` · field ${param}` : "";
+      const safeCode = typeof code === "string" && /^[a-zA-Z0-9_.-]{1,80}$/.test(code) ? ` · ${code}` : "";
+      throw new Error(`OpenAI rejected the gateway request format (400)${safeParam}${safeCode}. Please report this error; changing your API key may not fix it.`);
+    }
     throw new Error(
       `OpenAI request failed (${r.status}). Check the gateway model setting.`,
     );

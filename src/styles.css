@@ -3665,3 +3665,29 @@ main {
 :root[data-theme="dark"] .text-button { color: #c1b4df; }
 :root[data-theme="dark"] .notice.error { background: #3a252d; color: #f1b2bd; }
 :root[data-theme="dark"] .notice.warning { background: #393025; color: #e6ca8e; }
+
+.suggestion-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+  color: #8b5c67;
+  font-size: 8px;
+  white-space: nowrap;
+}
+.suggestion-legend > span {
+  width: 16px;
+  border-bottom: 1px dashed #c36b7b;
+}
+.document-viewport.editing-step .resume-sheet [data-suggested-edit="true"] {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: #c36b7b;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+:root[data-theme="dark"] .suggestion-legend { color: #e4a2ad; }
+:root[data-theme="dark"] .suggestion-legend > span { border-color: #e18d9c; }
+:root[data-theme="dark"] .document-viewport.editing-step .resume-sheet [data-suggested-edit="true"] {
+  text-decoration-color: #e18d9c;
+}

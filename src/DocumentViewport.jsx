@@ -96,13 +96,13 @@ export default function DocumentViewport({
     stage = useRef(),
     handlers = useRef();
   handlers.current = { onSelect, onEdit };
-  const [zoom, setZoom] = useState(90),
+  const [zoom, setZoom] = useState(100),
     [original, setOriginal] = useState(initialOriginal),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [editing, setEditing] = useState(false),
     [mapped, setMapped] = useState(0);
-  const [fit, setFit] = useState(true);
+  const [fit, setFit] = useState(false);
   const [pageWidth, setPageWidth] = useState(816);
   const [available, setAvailable] = useState(900);
   useEffect(() => {
@@ -127,6 +127,22 @@ export default function DocumentViewport({
   const signature = JSON.stringify(
     renderedParagraphs.map((p) => [p.id, p.text]),
   );
+  const suggestedParagraphIds = new Set();
+  if (editingStep && !original && !preview && w.analysis?.signature) {
+    try {
+      const analyzedRole = JSON.parse(w.analysis.signature).role;
+      if (JSON.stringify(analyzedRole) === JSON.stringify(w.role)) {
+        w.analysis.data.rewrites.forEach((rewrite, index) => {
+          const source = w.paragraphs.find((p) => p.id === rewrite.paragraphId);
+          if (!w.decisions?.[index] && source?.editable && source.text === rewrite.before)
+            suggestedParagraphIds.add(source.id);
+        });
+      }
+    } catch {
+      // Ignore malformed or outdated analysis metadata.
+    }
+  }
+  const suggestedParagraphKey = [...suggestedParagraphIds].sort().join(",");
   useEffect(() => {
     const ob = new ResizeObserver((entries) =>
       setAvailable(entries[0].contentRect.width),
@@ -230,6 +246,7 @@ export default function DocumentViewport({
           el.setAttribute("contenteditable", String(editable));
           el.setAttribute("spellcheck", "true");
           el.dataset.editable = String(editable);
+          el.dataset.suggestedEdit = String(suggestedParagraphIds.has(p.id));
           if (p.text !== w.baseline[i]?.text)
             el.classList.add("resume-paragraph-changed");
           if (preview?.paragraphId === p.id)
@@ -323,7 +340,7 @@ export default function DocumentViewport({
     return () => {
       cancelled = true;
     };
-  }, [w.id, signature, original, Boolean(preview), busy, pdfOriginal, w.resumeLayout]);
+  }, [w.id, signature, original, Boolean(preview), busy, pdfOriginal, w.resumeLayout, suggestedParagraphKey]);
   useEffect(() => {
     const all = host.current?.querySelectorAll("[data-resume-id]") || [];
     for (const el of all) {
@@ -342,7 +359,7 @@ export default function DocumentViewport({
     : zoom / 100;
   return (
     <section
-      className="document-viewport"
+      className={`document-viewport ${editingStep ? "editing-step" : ""}`}
       aria-label="Resume document viewport"
     >
       <div className="document-toolbar">
@@ -358,6 +375,11 @@ export default function DocumentViewport({
                   ? "Editing paragraph"
                   : "Editable draft"}
           </span>
+          {suggestedParagraphIds.size > 0 && (
+            <span className="suggestion-legend">
+              <span aria-hidden="true" /> Suggested edits
+            </span>
+          )}
         </div>
         <div className="document-controls">
           <button
