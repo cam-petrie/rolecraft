@@ -110,6 +110,7 @@ export const demoAnalysis = {
       after: "Contributed to the checkout service using TypeScript and React.",
       reason:
         "Use a clearer action verb without claiming ownership or inventing impact.",
+      fitImpact: { minPoints: 0, maxPoints: 1, rationale: "Makes the contribution easier to read; it does not add evidence of senior ownership." },
     },
     {
       paragraphId: "p8",
@@ -119,6 +120,7 @@ export const demoAnalysis = {
         "Supported deployments and monitoring using AWS and GitHub Actions.",
       reason:
         "Clarify contribution while retaining the source’s limited scope.",
+      fitImpact: { minPoints: 0, maxPoints: 1, rationale: "Clarifies AWS and CI/CD exposure, but does not establish deployment ownership." },
     },
     {
       paragraphId: "p9",
@@ -128,6 +130,7 @@ export const demoAnalysis = {
         "Launched a self-service billing dashboard in collaboration with product and design.",
       reason:
         "Lead with the delivered outcome without adding unsupported metrics.",
+      fitImpact: { minPoints: 1, maxPoints: 2, rationale: "Brings product delivery and cross-functional collaboration to the front of the bullet." },
     },
   ],
 };

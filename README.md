@@ -55,7 +55,7 @@ AI analysis, rewrites and interview prep use `gpt-6-luna` by default through the
 - Local resume libraries are separated by GitHub account ID. Earlier drafts remain in the signed-out local workspace and can be moved by backup/import. Browser-profile separation is still needed on shared devices; IndexedDB is not encrypted.
 - Anonymous users can edit locally and try the example. AI requests and job-link import require sign-in. The old shared-token login is removed.
 
-The gateway is not deployed yet. Create the Cloudflare account and dedicated GitHub OAuth App, configure the secrets, then follow the activation guide. Until then, sign-in and real AI requests are unavailable and fail closed.
+The hosted app uses a separately deployed Cloudflare gateway. For a new installation, create a Cloudflare account and dedicated GitHub OAuth App, configure the secrets and follow the activation guide. An unconfigured installation fails closed for sign-in and AI requests.
 
 ## Push to GitHub and publish Pages
 
@@ -75,6 +75,16 @@ git push -u origin main
 In the repository, open **Settings → Pages → Build and deployment → Source → GitHub Actions**. The included `.github/workflows/pages.yml` installs locked dependencies, runs the tests, builds the frontend and deploys `dist/` on pushes to `main`. If the first run occurred before Pages was enabled, rerun it from **Actions → Publish GitHub Pages → Run workflow**.
 
 Your site will normally be at `https://YOUR-USERNAME.github.io/rolecraft/`. The GitHub Pages workflow deploys only static assets. Deploy the Worker separately and enter its URL in the app. Never commit resumes, backups, credentials or real job-application data to this repository.
+
+## Fit impact and company role comparison
+
+Each new analysis and alternative/custom rewrite includes an estimated range of extra fit-score points and its rationale. The estimate applies to that edit alone against the supplied resume; estimates are not additive, guaranteed increases, ATS scores or hiring probabilities. Cosmetic edits can have zero impact. Applying edits does not automatically increase the displayed score: reanalyze to obtain a fresh assessment. Older saved suggestions show a prompt to reanalyze for an estimate.
+
+After an initial analysis, **Role fit → Compare company roles** starts a separate, explicitly requested comparison using API credits. Discovery supports direct Greenhouse, Lever (including EU) and Ashby listing URLs and fetches the same company's public feed. Workday import still works, but company comparison is not yet supported for Workday. The gateway never sends resumes or OpenAI keys to a job board. Discovery uses fixed public API hosts, rejects redirects, bounds feed size and excludes the original posting, duplicates, unlisted Ashby posts and incomplete descriptions.
+
+The comparison scores the current role again plus **at most 50 alternatives**, using the same current resume snapshot and 100-point rubric as full analysis: required qualifications 40, relevant responsibilities 30, seniority/scope 20, preferred qualifications 10. If more than 50 eligible alternatives exist, related job titles are selected first with alphabetical ties; the chart ranks only this selected subset, not every opening at the company. Up to two score-only requests run at a time. Progress and finished results are saved locally. Stop cancels further work; already submitted requests may still consume API credits. Individual failures are shown separately and never treated as zero-fit scores; account, key, rate, quota and gateway failures stop the remaining work.
+
+Results are displayed as a searchable bar chart, highest score first, with the active role highlighted and point differences shown. Scores are subjective and can vary between calls. **Use role & analyze** saves the previous draft/target as a version, sets the selected listing as the active role, and runs its full analysis without changing resume text. Resume changes, company-board changes or edits to the active job description mark comparisons outdated and disable role selection until refreshed. Reloading does not automatically restart a comparison or spend credits. Backup imports discard saved comparison results, as they do analysis and interview packs.
 
 ## Formatting and file limits
 
@@ -107,6 +117,9 @@ Changing the resume or role marks existing analysis and prep as outdated. Rewrit
 - `src/pdf-docx.js` — styled editable PDF reconstruction, visual ordering and simple columns.
 - `src/storage.js` — IndexedDB and portable backups.
 - `src/api.js` — authenticated gateway client and response validation.
+- `src/CompanyComparison.jsx` and `src/company-comparison.js` — ranked comparison UI and cancellable scoring orchestration.
+- `src/FitImpact.jsx` — estimated score impact on recommendations and custom rewrites.
+- `server/company-jobs.js` and `shared/job-boards.js` — bounded public-feed discovery and company/job identity checks.
 - `src/demo.js` — explicitly labeled sample data.
 - `shared/contracts.js` — request/response schemas, evidence checks and stale-edit guards.
 - `server/worker.js` — authenticated OpenAI gateway and job-link import.
@@ -115,11 +128,14 @@ Changing the resume or role marks existing analysis and prep as outdated. Rewrit
 - `tests/auth.test.js` — owner isolation, key routing, forged/expired sessions and OAuth checks.
 - `server/local.js` — local Node development adapter.
 - `tests/core.test.js` — document preservation, stale edits, evidence checks, import safety and gateway tests.
+- `tests/company-comparison.test.js` — feed isolation, 50-role cap, scoring snapshots, cancellation, failures and score-impact bounds.
 - `.github/workflows/pages.yml` — GitHub Pages deployment.
 
 ## Validation status
 
-The production build and all 59 automated tests pass on Node 22. Coverage includes authentication and owner-only key routing, source-grounded AI outputs, Word run preservation, stale-edit guards, PDF font/color extraction, inherited styling, source markers, visual ordering, page dimensions and simple columns. Live GitHub OAuth and OpenAI analysis were verified against the deployed gateway. Browser QA compared single- and two-column styled PDFs with their originals, edited a paragraph in place, confirmed reflow without overlap, inspected the downloaded DOCX for the retained colors/fonts/table/edited text, and recovered styling for a PDF saved before this feature. The styled print document uses the same renderer; the final browser print dialog and Word pagination should be reviewed before submitting a resume. A customer-provided embedded-font PDF was additionally checked against its original for Times New Roman faces, six section rules, centered contact details, right-aligned dates, mixed emphasis and inline-edit preservation. No private resume files are included in the repository. No AI calls were needed for PDF style recovery.
+Fit-impact and company-comparison changes are checked with mocked OpenAI/board responses, the full test suite, the production frontend build and Wrangler’s local deployment dry run. Local browser QA covers impact labels, ranked scores, active-role switching and automatic version creation. This feature validation does not send personal resume data or make paid OpenAI requests.
+
+The production build and all 67 automated tests pass on Node 22. Coverage includes authentication and owner-only key routing, source-grounded AI outputs, Word run preservation, stale-edit guards, PDF font/color extraction, inherited styling, source markers, visual ordering, page dimensions and simple columns. Live GitHub OAuth and OpenAI analysis were verified against the deployed gateway. Browser QA compared single- and two-column styled PDFs with their originals, edited a paragraph in place, confirmed reflow without overlap, inspected the downloaded DOCX for the retained colors/fonts/table/edited text, and recovered styling for a PDF saved before this feature. The styled print document uses the same renderer; the final browser print dialog and Word pagination should be reviewed before submitting a resume. A customer-provided embedded-font PDF was additionally checked against its original for Times New Roman faces, six section rules, centered contact details, right-aligned dates, mixed emphasis and inline-edit preservation. No private resume files are included in the repository. No AI calls were needed for PDF style recovery.
 
 
 ## Official references

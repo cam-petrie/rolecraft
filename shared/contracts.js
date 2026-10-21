@@ -13,6 +13,15 @@ export const roleSchema = z.object({
   url: z.string().max(3000),
   text: z.string().max(60000),
 });
+export const fitImpactSchema = z.object({
+  minPoints: z.number().int().min(0).max(100),
+  maxPoints: z.number().int().min(0).max(100),
+  rationale: text,
+}).refine((value) => value.minPoints <= value.maxPoints, "Invalid fit impact range.");
+export const scoreSchema = z.object({
+  score: z.number().int().min(0).max(100),
+  verdict: text,
+});
 export const analysisSchema = z.object({
   score: z.number().int().min(0).max(100),
   verdict: text,
@@ -29,6 +38,7 @@ export const analysisSchema = z.object({
         before: text,
         after: text,
         reason: text,
+        fitImpact: fitImpactSchema.optional(),
       }),
     )
     .length(3),
@@ -38,6 +48,7 @@ export const rewriteSchema = z.object({
   before: text,
   after: text,
   reason: text,
+  fitImpact: fitImpactSchema.optional(),
 });
 export const prepSchema = z.object({
   overview: text,
@@ -83,11 +94,12 @@ export const prepSchema = z.object({
     ),
 });
 export const requestSchema = z.object({
-  task: z.enum(["analyze", "rewrite", "prep"]),
+  task: z.enum(["analyze", "rewrite", "prep", "score"]),
   paragraphs: z.array(paragraphSchema).min(1).max(800),
   role: roleSchema,
   paragraphId: z.string().max(100).optional(),
   instruction: z.string().max(2000).optional(),
+  currentScore: z.number().int().min(0).max(100).optional(),
 });
 export function assertEvidence(task, data, paragraphs, role) {
   const byId = new Map(paragraphs.map((p) => [p.id, p]));

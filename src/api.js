@@ -2,7 +2,9 @@ import {
   analysisSchema,
   rewriteSchema,
   prepSchema,
+  scoreSchema,
   assertEvidence,
+  signature,
 } from "../shared/contracts.js";
 export function normalizeEndpoint(value) {
   const u = new URL(value);
@@ -19,7 +21,7 @@ export function normalizeEndpoint(value) {
     );
   return u.origin;
 }
-export async function gateway(config, path, body) {
+export async function gateway(config, path, body, { signal } = {}) {
   const endpoint = normalizeEndpoint(config.endpoint);
   if (!config.token)
     throw new Error(
@@ -43,11 +45,12 @@ export async function gateway(config, path, body) {
   try {
     r = await fetch(endpoint + path, {
       method: "POST",
-      signal: AbortSignal.timeout(135000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(135000)]) : AbortSignal.timeout(135000),
       headers,
       body: JSON.stringify(body),
     });
   } catch {
+    if (signal?.aborted) throw new DOMException("Comparison stopped.", "AbortError");
     throw new Error(
       "Could not reach the gateway. Check its URL and allowed-origin configuration, then try again.",
     );
@@ -72,11 +75,13 @@ export async function callAI(config, task, workspace, extra = {}) {
     task,
     paragraphs: workspace.paragraphs,
     role: workspace.role,
+    ...(task === "rewrite" && workspace.analysis?.signature === signature(workspace.paragraphs, workspace.role)
+      ? { currentScore: workspace.analysis.data.score } : {}),
     ...extra,
   });
   return assertEvidence(
     task,
-    { analyze: analysisSchema, rewrite: rewriteSchema, prep: prepSchema }[
+    { analyze: analysisSchema, rewrite: rewriteSchema, prep: prepSchema, score: scoreSchema }[
       task
     ].parse(data),
     workspace.paragraphs,

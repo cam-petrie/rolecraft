@@ -131,6 +131,7 @@ export async function fromBackup(file) {
   w.id = crypto.randomUUID();
   w.analysis = null;
   w.prep = null;
+  w.companyComparison = null;
   w.decisions = {};
   w.updatedAt = new Date().toISOString();
   return w;

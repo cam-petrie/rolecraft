@@ -49,6 +49,8 @@ import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/manrope";
 import "./styles.css";
 import ResumeWorkspace from "./ResumeWorkspace.jsx";
+import FitImpact from "./FitImpact.jsx";
+import { compareCompanyRoles, demoCompanyComparison } from "./company-comparison.js";
 import { hasResumeLayout, selectedResumeLayout } from "./resume-layouts.js";
 import { AuthProvider, useAuth, AccountStatus, AuthPanel } from "./auth.jsx";
 const steps = [
@@ -69,6 +71,10 @@ const steps = [
   { id: "history", title: "Version history", short: "Versions", icon: History },
 ];
 const clone = (x) => structuredClone(x);
+const stampEstimates = (data, workspace) => ({
+  ...data,
+  rewrites: data.rewrites.map((rewrite) => ({ ...rewrite, estimateSignature: signature(workspace.paragraphs, workspace.role) })),
+});
 const date = (x) =>
   new Date(x).toLocaleString(undefined, {
     dateStyle: "medium",
@@ -210,6 +216,9 @@ function App() {
     [versionName, setVersionName] = useState(""),
     [direction, setDirection] = useState(""),
     [filter, setFilter] = useState("all");
+  const [comparing, setComparing] = useState(false);
+  const comparisonAbort = useRef(null);
+  useEffect(() => () => comparisonAbort.current?.abort(), []);
   const fileRef = useRef(),
     backupRef = useRef(),
     liveW = useRef(w);
@@ -342,13 +351,46 @@ function App() {
       update((old) => ({
         ...old,
         analysis: {
-          data,
+          data: stampEstimates(data, w),
           signature: signature(w.paragraphs, w.role),
           date: new Date().toISOString(),
         },
         decisions: {},
       }));
       setTab("analysis");
+    });
+  }
+  async function compareRoles() {
+    await action("Comparing company roles", async () => {
+      const snapshot = { ...w, paragraphs: clone(w.paragraphs), role: clone(w.role) };
+      const controller = new AbortController();
+      comparisonAbort.current = controller;
+      setComparing(true);
+      const receive = (companyComparison) => update((old) => old.id === snapshot.id ? { ...old, companyComparison } : old);
+      try {
+        if (snapshot.kind === "demo") receive(demoCompanyComparison(snapshot));
+        else await compareCompanyRoles({ config, workspace: snapshot, signal: controller.signal, onUpdate: receive });
+      } catch (e) {
+        if (controller.signal.aborted) setToast("Comparison stopped. Completed scores are saved.");
+        else throw e;
+      } finally {
+        comparisonAbort.current = null;
+        setComparing(false);
+      }
+    });
+  }
+  async function useCompanyRole(row) {
+    await action("Analyzing your new target role", async () => {
+      const { location, ...role } = row.role;
+      const version = { id: crypto.randomUUID(), name: "Before changing target role · automatic snapshot", date: new Date().toISOString(),
+        paragraphs: clone(w.paragraphs), role: clone(w.role), analysis: clone(w.analysis), prep: clone(w.prep), resumeLayout: w.resumeLayout || "original" };
+      const next = { ...w, role: clone(role), analysis: null, prep: null, decisions: {}, versions: [version, ...w.versions] };
+      update(() => next);
+      setTab("analysis");
+      setSelected("");
+      const data = w.kind === "demo" ? { ...clone(demoAnalysis), score: row.score, verdict: row.verdict } : await callAI(config, "analyze", next);
+      update((old) => ({ ...old, analysis: { data: stampEstimates(data, next), signature: signature(next.paragraphs, next.role), date: new Date().toISOString() } }));
+      setToast("New target role analyzed. Your previous draft is saved in Versions.");
     });
   }
   async function buildPrep() {
@@ -399,7 +441,7 @@ function App() {
           data: {
             ...old.analysis.data,
             rewrites: old.analysis.data.rewrites.map((v, i) =>
-              i === index ? data : v,
+              i === index ? { ...data, estimateSignature: signature(w.paragraphs, w.role) } : v,
             ),
           },
         },
@@ -892,6 +934,11 @@ function App() {
                 }))
               }
               onAnalyze={analyze}
+              onCompare={compareRoles}
+              onCancelComparison={() => comparisonAbort.current?.abort()}
+              onUseRole={useCompanyRole}
+              comparing={comparing}
+              error={error}
               onAccept={accept}
               onAlternative={(rewrite, index) => {
                 setDirection("");
@@ -1554,6 +1601,7 @@ function App() {
                 <p>{modal.rewrite.after}</p>
               </div>
               <p>{modal.rewrite.reason}</p>
+              <FitImpact impact={modal.rewrite.fitImpact} />
               <div className="row">
                 <Button
                   variant="primary"
@@ -1615,6 +1663,15 @@ function App() {
                 The gateway fetches supported public job listings. For
                 restricted or unsupported listings, paste the job text. There
                 are no analytics or tracking scripts.
+              </p>
+              <h3>When you compare company roles</h3>
+              <p>
+                Comparison starts only when you request it. The gateway reads
+                the company’s public job board, then sends your current resume
+                text and each selected description to OpenAI for scoring. It
+                uses API credits for the current role and up to 50 alternatives.
+                Your resume and API key are never sent to the job board. Scores
+                and descriptions are saved in this browser with your workspace.
               </p>
               <Button onClick={() => setModal(null)}>Got it</Button>
             </div>

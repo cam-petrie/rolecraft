@@ -19,6 +19,9 @@ import {
 import DocumentViewport from "./DocumentViewport.jsx";
 import ResumeLayoutPicker from "./ResumeLayoutPicker.jsx";
 import { selectedResumeLayout } from "./resume-layouts.js";
+import FitImpact from "./FitImpact.jsx";
+import CompanyComparison from "./CompanyComparison.jsx";
+import { signature } from "../shared/contracts.js";
 export default function ResumeWorkspace({
   w,
   tab,
@@ -27,6 +30,11 @@ export default function ResumeWorkspace({
   onSelect,
   onEdit,
   onAnalyze,
+  onCompare,
+  onCancelComparison,
+  onUseRole,
+  comparing,
+  error,
   onAccept,
   onAlternative,
   onDismiss,
@@ -62,13 +70,8 @@ export default function ResumeWorkspace({
     (p, i) => p.text !== w.baseline[i]?.text,
   ).length;
   const selectedP = w.paragraphs.find((p) => p.id === selected);
-  const stale =
-    w.analysis &&
-    w.analysis.signature !==
-      JSON.stringify({
-        paragraphs: w.paragraphs.map((p) => [p.id, p.text]),
-        role: w.role,
-      });
+  const currentSignature = signature(w.paragraphs, w.role);
+  const stale = w.analysis && w.analysis.signature !== currentSignature;
   const pending =
     w.analysis?.data.rewrites.filter((r, i) => !w.decisions?.[i]).length || 0;
   function apply(r, index) {
@@ -233,6 +236,7 @@ export default function ResumeWorkspace({
                     <RotateCcw size={14} />
                     Reanalyze current draft
                   </button>
+                  <CompanyComparison w={w} busy={busy} comparing={comparing} onCompare={onCompare} onCancel={onCancelComparison} onUseRole={onUseRole} error={error} />
                   <details className="fit-section" open>
                     <summary>
                       <CheckCircle2 size={16} />
@@ -378,6 +382,7 @@ export default function ResumeWorkspace({
                           <p>{r.after}</p>
                         </div>
                         <p className="recommendation-reason">{r.reason}</p>
+                        <FitImpact impact={r.fitImpact} stale={r.estimateSignature ? r.estimateSignature !== currentSignature : Boolean(stale)} />
                         {!status && (
                           <>
                             <div className="recommendation-actions">
