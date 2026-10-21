@@ -342,7 +342,14 @@ test("analysis schema stays compact and gateway validates resume IDs and job cit
     assert.equal(rewrite.properties.before, undefined);
     assert.equal(rewrite.properties.paragraphId.enum, undefined);
     assert.equal(schema.properties.matches.items.properties.requirement.enum, undefined);
-    return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify(demoAnalysis) }] }] });
+    const data = {
+      ...demoAnalysis,
+      matches: demoAnalysis.matches.map((match) => ({
+        ...match,
+        requirement: w.role.text.slice(0, 100),
+      })),
+    };
+    return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify(data) }] }] });
   });
 });
 
