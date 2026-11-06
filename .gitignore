@@ -8,3 +8,10 @@ dist/
 test-results/
 playwright-report/
 .DS_Store
+# Personal uploads and portable workspace backups do not belong in the repo.
+*.pdf
+*.doc
+*.docx
+*.rtf
+*.odt
+rolecraft-backup*.json

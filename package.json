@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
+    "build": "vite build && node scripts/check-public-build.js",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test tests/*.test.js",
     "gateway": "node server/local.js"
