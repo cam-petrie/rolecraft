@@ -66,7 +66,8 @@ test("opening the toolbar dialog for a real analysis exposes a separate paid-sta
     w: savedGreenhouse(), open: true, onOpenChange: () => {}, showCard: false,
   }));
   assert.ok(html.includes('aria-label="Company role comparison"'));
-  assert.ok(html.includes("Compare company roles"));
+  assert.ok(html.includes("Start comparison"));
   assert.ok(html.includes("Uses API credits only when you start"));
+  assert.ok(html.includes("Maximum alternative roles"));
   assert.ok(!html.includes('class="company-comparison-card"'));
 });

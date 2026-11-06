@@ -1,5 +1,6 @@
 import { gateway } from "./api.js";
 import { roleSchema, scoreSchema } from "../shared/contracts.js";
+import { comparisonOptionsSchema, resumeSearchTerms, shortlistCompanyRoles } from "../shared/comparison-options.js";
 import { jobBoardSource, sameJob, resumeSignature } from "../shared/job-boards.js";
 
 export function comparisonIsStale(comparison, workspace) {
@@ -21,36 +22,62 @@ export function demoCompanyComparison(workspace) {
       ...examples.map(([title, score, verdict], i) => ({ role: { ...workspace.role, title, url: `https://example.com/rolecraft-demo/${i}`, text: `${workspace.role.text}\nThis sample role focuses on ${title}.` },
         score, verdict, original: false, status: "scored" }))] };
 }
-export async function compareCompanyRoles({ config, workspace, signal, onUpdate, request = gateway }) {
+export function canRetryComparison(workspace) {
+  const previous = workspace.companyComparison;
+  return Boolean(previous && !comparisonIsStale(previous, workspace) &&
+    (sameJob(previous.sourceRole.url, workspace.role.url) || previous.sourceRole.url === workspace.role.url) &&
+    previous.rows.some((row) => row.status !== "scored"));
+}
+export async function compareCompanyRoles({ config, workspace, preferences = { maxRoles: 50 }, retry = false, signal, onUpdate, request = gateway }) {
   if (!workspace.analysis) throw new Error("Run your initial role-fit analysis before comparing company roles.");
   const source = jobBoardSource(workspace.role.url);
   if (!source?.jobId) throw new Error("Add a direct Greenhouse, Lever or Ashby listing URL to compare company roles.");
-  const found = await request(config, "/company-jobs", { role: workspace.role }, { signal });
-  signal?.throwIfAborted();
-  if (!Array.isArray(found.roles) || found.source?.key !== source.key) throw new Error("The gateway returned listings from an unexpected board.");
-  const seen = new Set();
-  const alternatives = found.roles.slice(0, 50).map((role) => {
-    const parsed = roleSchema.parse(role);
-    const board = jobBoardSource(parsed.url);
-    if (!board?.jobId || board.key !== source.key || sameJob(parsed.url, workspace.role.url) || seen.has(board.jobId)) return null;
-    seen.add(board.jobId);
-    return { ...parsed, location: typeof role.location === "string" ? role.location.slice(0, 300) : "" };
-  }).filter(Boolean);
-  let rows = [{ role: workspace.role, original: true, status: "pending" },
-    ...alternatives.map((role) => ({ role, original: false, status: "pending" }))];
-  const base = { source, sourceRole: workspace.role, resumeSignature: resumeSignature(workspace.paragraphs),
-    date: new Date().toISOString(), totalAvailable: Number.isInteger(found.total) ? found.total : alternatives.length };
+  const options = comparisonOptionsSchema.parse(preferences);
+  let rows, base;
+  if (retry) {
+    if (!canRetryComparison(workspace)) throw new Error("The resume or target changed. Start a fresh comparison instead.");
+    const previous = workspace.companyComparison;
+    rows = previous.rows.slice(0, 51).map((row) => {
+      const role = roleSchema.parse(row.role);
+      if (jobBoardSource(role.url)?.key !== source.key) throw new Error("Saved comparison contains an unexpected board.");
+      if (row.status === "scored") return { ...row, ...scoreSchema.parse(row), role: row.role };
+      const { error, score, verdict, ...unfinished } = row;
+      return { ...unfinished, status: "pending" };
+    });
+    base = { ...previous, retriedAt: new Date().toISOString(), reusedCount: rows.filter((r) => r.status === "scored").length };
+    delete base.rows;
+  } else {
+    const keywords = resumeSearchTerms(workspace.paragraphs);
+    const found = await request(config, "/company-jobs", { role: workspace.role, preferences: options, keywords }, { signal });
+    signal?.throwIfAborted();
+    if (!Array.isArray(found.roles) || found.source?.key !== source.key) throw new Error("The gateway returned listings from an unexpected board.");
+    const seen = new Set();
+    const candidates = found.roles.slice(0, 50).map((role) => {
+      const parsed = roleSchema.parse(role);
+      const board = jobBoardSource(parsed.url);
+      if (!board?.jobId || board.key !== source.key || sameJob(parsed.url, workspace.role.url) || seen.has(board.jobId)) return null;
+      seen.add(board.jobId);
+      return { ...parsed, location: typeof role.location === "string" ? role.location.slice(0, 300) : "", remote: typeof role.remote === "boolean" ? role.remote : undefined };
+    }).filter(Boolean);
+    const alternatives = shortlistCompanyRoles(candidates, workspace.role, options, keywords).roles;
+    rows = [{ role: workspace.role, original: true, status: "pending" },
+      ...alternatives.map((role) => ({ role, original: false, status: "pending" }))];
+    base = { source, sourceRole: workspace.role, resumeSignature: resumeSignature(workspace.paragraphs),
+      date: new Date().toISOString(), totalAvailable: Number.isInteger(found.total) ? found.total : alternatives.length,
+      matching: Number.isInteger(found.matching) ? found.matching : alternatives.length, preferences: options, reusedCount: 0 };
+    if (!alternatives.length) throw new Error("No other roles match these filters. Broaden the title, location or level before spending API credits.");
+  }
   const publish = (status = "running") => {
     const comparison = { ...base, rows: [...rows], status };
     onUpdate?.(comparison);
     return comparison;
   };
   publish();
-  let next = 0;
-  let fatalError = "";
+  const pending = rows.map((row, i) => row.status !== "scored" ? i : -1).filter((i) => i >= 0);
+  let next = 0, fatalError = "";
   async function scoreNext() {
-    while (!signal?.aborted && !fatalError && next < rows.length) {
-      const index = next++;
+    while (!signal?.aborted && !fatalError && next < pending.length) {
+      const index = pending[next++];
       rows[index] = { ...rows[index], status: "scoring" };
       publish();
       try {
@@ -60,9 +87,9 @@ export async function compareCompanyRoles({ config, workspace, signal, onUpdate,
         rows[index] = { ...rows[index], ...result, status: "scored" };
       } catch (e) {
         if (signal?.aborted) { rows[index] = { ...rows[index], status: "cancelled" }; break; }
-        rows[index] = { ...rows[index], status: "failed", error: e.message || "This role could not be scored." };
-        // Stop spending on systemic failures rather than repeat them 50 times.
-        if (/key|quota|billing|rate|model|sign in|schema|request format|gateway|reach/i.test(e.message || "")) fatalError = e.message;
+        const message = e.name === "ZodError" ? "An invalid fit score was returned. This role was not ranked." : e.message || "This role could not be scored.";
+        rows[index] = { ...rows[index], status: "failed", error: message };
+        if ([401, 403, 429].includes(e.status) || e.status >= 500 || /\b(key|quota|billing|rate|model|schema|gateway)\b|sign in|request format|invalid request data|too large|not configured/i.test(message)) fatalError = message;
       }
       publish();
     }

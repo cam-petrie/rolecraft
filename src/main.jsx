@@ -51,6 +51,8 @@ import "./styles.css";
 import ResumeWorkspace from "./ResumeWorkspace.jsx";
 import FitImpact from "./FitImpact.jsx";
 import { compareCompanyRoles, demoCompanyComparison } from "./company-comparison.js";
+import { editParagraph, editOperation, replayEdit, replayDecisions } from "./resume-edits.js";
+import { defaultComparisonOptions, shortlistCompanyRoles } from "../shared/comparison-options.js";
 import { hasResumeLayout, selectedResumeLayout } from "./resume-layouts.js";
 import { AuthProvider, useAuth, AccountStatus, AuthPanel } from "./auth.jsx";
 const steps = [
@@ -218,6 +220,10 @@ function App() {
     [filter, setFilter] = useState("all");
   const [comparing, setComparing] = useState(false);
   const comparisonAbort = useRef(null);
+  const draftSession = useRef(null);
+  const editHistory = useRef({ undo: [], redo: [] });
+  const [editRevision, refreshHistory] = useState(0);
+  useEffect(() => { editHistory.current = { undo: [], redo: [] }; refreshHistory((n) => n + 1); }, [w?.id]);
   useEffect(() => () => comparisonAbort.current?.abort(), []);
   const fileRef = useRef(),
     backupRef = useRef(),
@@ -283,10 +289,46 @@ function App() {
     return () => clearTimeout(timer);
   }, [toast]);
   function update(fn) {
-    setW((old) => ({ ...fn(old), updatedAt: new Date().toISOString() }));
+    if (!liveW.current) return;
+    const next = { ...fn(liveW.current), updatedAt: new Date().toISOString() };
+    // Blur commits must be visible to the immediately following button click.
+    liveW.current = next;
+    setW(next);
+    return next;
+  }
+  function clearEditHistory() { editHistory.current = { undo: [], redo: [] }; refreshHistory((n) => n + 1); }
+  function flushDraft() {
+    if (!draftSession.current || draftSession.current.save()) return true;
+    setError("Finish or cancel the paragraph edit before continuing. Your typed text is still in the viewer.");
+    return false;
+  }
+  function commitResume(paragraphs, decisions = liveW.current.decisions || {}) {
+    const current = liveW.current;
+    const op = editOperation(current.paragraphs, paragraphs, current.decisions || {}, decisions);
+    if (op.changes.length) {
+      editHistory.current.undo = [...editHistory.current.undo, op].slice(-100);
+      editHistory.current.redo = [];
+      refreshHistory((n) => n + 1);
+    }
+    return update((old) => ({ ...old, paragraphs, decisions }));
+  }
+  function replay(direction) {
+    if (!flushDraft()) return;
+    try {
+      const history = editHistory.current;
+      const stack = history[direction];
+      const op = stack[stack.length - 1];
+      if (!op) return;
+      const paragraphs = replayEdit(liveW.current.paragraphs, op, direction);
+      stack.pop();
+      history[direction === "undo" ? "redo" : "undo"].push(op);
+      update((old) => ({ ...old, paragraphs, decisions: replayDecisions(old.decisions || {}, op, direction) }));
+      refreshHistory((n) => n + 1);
+    } catch (e) { setError(e.message); }
   }
   async function action(label, fn) {
     if (busy) return;
+    if (!flushDraft()) return;
     setError("");
     setBusy(label);
     try {
@@ -298,6 +340,8 @@ function App() {
     }
   }
   async function switchTo(next) {
+    if (!flushDraft()) return;
+    const w = liveW.current;
     if (w?.id === next.id) {
       setTab("workspace");
       return;
@@ -311,6 +355,7 @@ function App() {
   async function upload(file) {
     if (!file) return;
     await action("Reading your resume", async () => {
+      const w = liveW.current;
       const next = await importResume(file);
       if (w) await persist(w);
       await saveWorkspace(next);
@@ -323,6 +368,7 @@ function App() {
   }
   async function loadDemo() {
     await action("Opening example", async () => {
+      const w = liveW.current;
       const next = createDemo();
       if (w) await persist(w);
       await saveWorkspace(next);
@@ -338,8 +384,9 @@ function App() {
     });
   }
   async function analyze() {
-    if (!w) return;
+    if (!liveW.current) return;
     await action("Reviewing resume against the role", async () => {
+      const w = liveW.current;
       if (w.role.text.trim().length < 100)
         throw new Error(
           "Add the full job description first (at least 100 characters).",
@@ -348,6 +395,7 @@ function App() {
         w.kind === "demo"
           ? clone(demoAnalysis)
           : await callAI(config, "analyze", w);
+      clearEditHistory();
       update((old) => ({
         ...old,
         analysis: {
@@ -360,16 +408,23 @@ function App() {
       setTab("analysis");
     });
   }
-  async function compareRoles() {
+  async function compareRoles({ preferences = defaultComparisonOptions, retry = false } = {}) {
     await action("Comparing company roles", async () => {
+      const w = liveW.current;
       const snapshot = { ...w, paragraphs: clone(w.paragraphs), role: clone(w.role) };
       const controller = new AbortController();
       comparisonAbort.current = controller;
       setComparing(true);
       const receive = (companyComparison) => update((old) => old.id === snapshot.id ? { ...old, companyComparison } : old);
       try {
-        if (snapshot.kind === "demo") receive(demoCompanyComparison(snapshot));
-        else await compareCompanyRoles({ config, workspace: snapshot, signal: controller.signal, onUpdate: receive });
+        if (snapshot.kind === "demo") {
+          const example = demoCompanyComparison(snapshot);
+          const selected = shortlistCompanyRoles(example.rows.slice(1).map((r) => ({ ...r.role, location: "Remote", remote: true })), snapshot.role, preferences).roles;
+          example.rows = [example.rows[0], ...example.rows.slice(1).filter((r) => selected.some((role) => role.url === r.role.url))];
+          example.preferences = preferences;
+          example.matching = selected.length;
+          receive(example);
+        } else await compareCompanyRoles({ config, workspace: snapshot, preferences, retry, signal: controller.signal, onUpdate: receive });
       } catch (e) {
         if (controller.signal.aborted) setToast("Comparison stopped. Completed scores are saved.");
         else throw e;
@@ -381,6 +436,8 @@ function App() {
   }
   async function useCompanyRole(row) {
     await action("Analyzing your new target role", async () => {
+      const w = liveW.current;
+      clearEditHistory();
       const { location, ...role } = row.role;
       const version = { id: crypto.randomUUID(), name: "Before changing target role · automatic snapshot", date: new Date().toISOString(),
         paragraphs: clone(w.paragraphs), role: clone(w.role), analysis: clone(w.analysis), prep: clone(w.prep), resumeLayout: w.resumeLayout || "original" };
@@ -395,6 +452,7 @@ function App() {
   }
   async function buildPrep() {
     await action("Building your interview pack", async () => {
+      const w = liveW.current;
       if (w.role.text.trim().length < 100)
         throw new Error("Add the full job description first.");
       const data =
@@ -410,20 +468,21 @@ function App() {
     });
   }
   function accept(r, index) {
+    if (!flushDraft()) return false;
     try {
+      const w = liveW.current;
       const paragraphs = applyRewrite(w.paragraphs, r);
-      update((old) => ({
-        ...old,
-        paragraphs,
-        decisions: { ...old.decisions, [index]: "accepted" },
-      }));
+      commitResume(paragraphs, { ...w.decisions, [index]: "accepted" });
       setToast("Suggestion applied. Your baseline is unchanged.");
+      return true;
     } catch (e) {
       setError(e.message);
+      return false;
     }
   }
   async function alternative(r, index) {
     await action("Drafting an alternative", async () => {
+      const w = liveW.current;
       if (w.kind === "demo")
         throw new Error(
           "The example uses fixed sample suggestions. Connect a gateway and upload your resume for custom alternatives.",
@@ -434,6 +493,7 @@ function App() {
           direction ||
           "Try a different concise, direct wording. Preserve all facts.",
       });
+      clearEditHistory();
       update((old) => ({
         ...old,
         analysis: {
@@ -454,6 +514,7 @@ function App() {
   function saveVersion() {
     if (!versionName.trim()) return;
     action("Saving version", async () => {
+      const w = liveW.current;
       const v = {
         id: crypto.randomUUID(),
         name: versionName.trim(),
@@ -478,6 +539,7 @@ function App() {
     });
   }
   function restore(paragraphs, role, resumeLayout = "original") {
+    clearEditHistory();
     const auto = {
       id: crypto.randomUUID(),
       name: "Before restore · automatic snapshot",
@@ -502,12 +564,13 @@ function App() {
     setToast("Restored. Your previous draft was saved as a version.");
   }
   async function exportDoc() {
-    await action("Preparing download", async () =>
-      download(
+    await action("Preparing download", async () => {
+      const w = liveW.current;
+      return download(
         await exportResume(w),
         w.filename.replace(/\.(pdf|docx)$/i, "") + "-tailored.docx",
-      ),
-    );
+      );
+    });
   }
   const currentSig = w && signature(w.paragraphs, w.role),
     analysisStale = w?.analysis && w.analysis.signature !== currentSig,
@@ -539,7 +602,7 @@ function App() {
               <button
                 key={id}
                 className={tab === id ? "active" : ""}
-                onClick={() => setTab(id)}
+                onClick={() => { if (flushDraft()) setTab(id); }}
               >
                 <Icon size={15} />
                 <span>
@@ -566,7 +629,8 @@ function App() {
             </span>
             <AccountStatus
               beforeLeave={async () => {
-                if (w) await persist(w);
+                if (!flushDraft()) throw new Error("Save or cancel the paragraph edit before signing out.");
+                if (liveW.current) await persist(liveW.current);
               }}
               onSettings={() => setModal({ type: "settings" })}
             />
@@ -925,14 +989,20 @@ function App() {
               busy={!!busy}
               selected={selected}
               onSelect={setSelected}
-              onEdit={(id, text) =>
-                update((old) => ({
-                  ...old,
-                  paragraphs: old.paragraphs.map((p) =>
-                    p.id === id && p.editable ? { ...p, text } : p,
-                  ),
-                }))
-              }
+              onEdit={(id, text, before) => {
+                const paragraphs = editParagraph(liveW.current.paragraphs, id, before, text);
+                commitResume(paragraphs);
+                return paragraphs.find((p) => p.id === id).text;
+              }}
+              onUndo={() => replay("undo")}
+              onRedo={() => replay("redo")}
+              canUndo={editHistory.current.undo.length > 0}
+              canRedo={editHistory.current.redo.length > 0}
+              editRevision={editRevision}
+              onDraft={(session) => {
+                draftSession.current = session;
+                if (!session) setError((old) => old.startsWith("Finish or cancel the paragraph edit") ? "" : old);
+              }}
               onAnalyze={analyze}
               onCompare={compareRoles}
               onCancelComparison={() => comparisonAbort.current?.abort()}
@@ -941,6 +1011,7 @@ function App() {
               error={error}
               onAccept={accept}
               onAlternative={(rewrite, index) => {
+                if (!flushDraft()) return;
                 setDirection("");
                 setModal({ type: "alternative", rewrite, index });
               }}
@@ -951,10 +1022,12 @@ function App() {
                 }))
               }
               onCustom={(paragraph) => {
+                if (!flushDraft()) return;
                 setDirection("");
                 setModal({ type: "custom", paragraph });
               }}
               onSaveVersion={() => {
+                if (!flushDraft()) return;
                 setVersionName(
                   w.role.company
                     ? `${w.role.company} · tailored`
@@ -962,9 +1035,9 @@ function App() {
                 );
                 setModal({ type: "save" });
               }}
-              onRestore={() => setModal({ type: "baseline" })}
-              onLayout={(resumeLayout) => update((old) => ({ ...old, resumeLayout }))}
-              onTab={setTab}
+              onRestore={() => { if (flushDraft()) setModal({ type: "baseline" }); }}
+              onLayout={(resumeLayout) => { if (flushDraft()) update((old) => ({ ...old, resumeLayout })); }}
+              onTab={(id) => { if (flushDraft()) setTab(id); }}
               roleForm={
                 <RoleForm
                   w={w}
@@ -1374,7 +1447,8 @@ function App() {
               <div className="modal-divider" />
               <AuthPanel
                 beforeLeave={async () => {
-                  if (w) await persist(w);
+                  if (!flushDraft()) throw new Error("Save or cancel the paragraph edit before signing out.");
+                  if (liveW.current) await persist(liveW.current);
                 }}
               />
               <div className="modal-divider" />
@@ -1561,6 +1635,7 @@ function App() {
                   modal.type === "alternative"
                     ? alternative(modal.rewrite, modal.index)
                     : action("Drafting your suggestion", async () => {
+                        const w = liveW.current;
                         if (w.kind === "demo")
                           throw new Error(
                             "Custom rewrites need an uploaded resume and a connected gateway.",
@@ -1608,10 +1683,10 @@ function App() {
                   onClick={() => {
                     try {
                       const paragraphs = applyRewrite(
-                        w.paragraphs,
+                        liveW.current.paragraphs,
                         modal.rewrite,
                       );
-                      update((old) => ({ ...old, paragraphs }));
+                      commitResume(paragraphs);
                       setModal(null);
                       setToast("Edit applied.");
                     } catch (e) {
@@ -1667,7 +1742,8 @@ function App() {
               <h3>When you compare company roles</h3>
               <p>
                 Comparison starts only when you request it. The gateway reads
-                the company’s public job board, then sends your current resume
+                the company’s public job board and uses resume keywords to
+                shortlist matching roles, then sends your current resume
                 text and each selected description to OpenAI for scoring. It
                 uses API credits for the current role and up to 50 alternatives.
                 Your resume and API key are never sent to the job board. Scores

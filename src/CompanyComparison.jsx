@@ -1,11 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { BarChart3, ArrowUpRight, X, LoaderCircle, Square, AlertTriangle } from "lucide-react";
 import { jobBoardSource, sameJob } from "../shared/job-boards.js";
-import { comparisonIsStale } from "./company-comparison.js";
+import { comparisonIsStale, canRetryComparison } from "./company-comparison.js";
+import { defaultComparisonOptions } from "../shared/comparison-options.js";
 
 export default function CompanyComparison({ w, busy, comparing, onCompare, onCancel, onUseRole, error, open, onOpenChange, showCard = true }) {
   const setOpen = onOpenChange;
   const [search, setSearch] = useState("");
+  const [preferences, setPreferences] = useState(() => ({ ...defaultComparisonOptions, ...w.companyComparison?.preferences }));
+  const [filtersOpen, setFiltersOpen] = useState(!w.companyComparison);
+  useEffect(() => { setPreferences({ ...defaultComparisonOptions, ...w.companyComparison?.preferences }); setFiltersOpen(!w.companyComparison); }, [w.id]);
+  const field = (key, value) => setPreferences((old) => ({ ...old, [key]: value }));
   const dialog = useRef();
   useEffect(() => {
     if (!open) return;
@@ -24,13 +29,14 @@ export default function CompanyComparison({ w, busy, comparing, onCompare, onCan
   const processing = comparing && comparison?.status === "running";
   const active = (row) => sameJob(row.role.url, w.role.url) || row.role.url === w.role.url;
   const baseline = ranked.find(active)?.score;
-  const start = () => { setOpen(true); setSearch(""); onCompare(); };
+  const start = (retry = false) => { setOpen(true); setFiltersOpen(false); setSearch(""); onCompare({ preferences, retry }); };
+  const validBudget = Number.isInteger(preferences.maxRoles) && preferences.maxRoles >= 1 && preferences.maxRoles <= 50;
   return <>{showCard && <section className="company-comparison-card" aria-label="Company role comparison">
     <div className="company-comparison-title"><BarChart3 size={18} /><h3>More paths at {w.role.company || "this company"}</h3></div>
     <p>Compare your current resume with up to 50 other open roles on the same company job board.</p>
     {supported ? <>
-      <button className="btn panel-primary" disabled={busy} onClick={start}><BarChart3 size={14} />{comparison ? "Run a fresh comparison" : "Compare company roles"}</button>
-      <small>{w.kind === "demo" ? "Fixed example scores. No API calls." : "Uses API credits · scores the current role plus up to 50 alternatives."}</small>
+      <button className="btn panel-primary" onClick={() => setOpen(true)}><BarChart3 size={14} />{comparison ? "Comparison settings & results" : "Compare company roles"}</button>
+      <small>{w.kind === "demo" ? "Fixed example scores. No API calls." : "Choose filters and a scoring budget before using API credits."}</small>
     </> : <small>Add a direct Greenhouse, Lever or Ashby listing URL in Resume to enable comparison. Workday comparison is not yet supported.</small>}
     {comparison && <button className="text-button company-results-button" onClick={() => setOpen(true)}>
       {comparing ? processing ? `Scoring roles · ${completed}/${rows.length}` : "Finding company roles…" : stale ? "View previous comparison" : `View ${ranked.length} ranked roles`}<ArrowUpRight size={14} />
@@ -44,7 +50,19 @@ export default function CompanyComparison({ w, busy, comparing, onCompare, onCan
         {w.kind === "demo" && <p className="comparison-example">Sample comparison · fictional roles and fixed scores.</p>}
         {error && <div className="notice error" role="alert">{error}</div>}
         {!supported && <div className="notice info">Add a direct Greenhouse, Lever or Ashby listing URL in Resume to enable company comparison.</div>}
-        {!comparison && !comparing && supported && <div><button className="btn primary" disabled={busy} onClick={start}><BarChart3 size={14} />Compare company roles</button><p className="comparison-method">Scores the current role plus up to 50 alternatives. Uses API credits only when you start this comparison.</p></div>}
+        {supported && <details className="comparison-settings" open={filtersOpen} onToggle={(e) => setFiltersOpen(e.currentTarget.open)}>
+          <summary>Shortlist filters & scoring budget</summary>
+          <fieldset disabled={busy} className="comparison-filter-grid">
+            <label>Title contains<input maxLength={200} value={preferences.title} onChange={(e) => field("title", e.target.value)} placeholder="e.g. software engineer" /></label>
+            <label>Location contains<input maxLength={200} value={preferences.location} onChange={(e) => field("location", e.target.value)} placeholder="e.g. New York or Canada" /></label>
+            <label>Exclude titles<input maxLength={200} value={preferences.exclude} onChange={(e) => field("exclude", e.target.value)} placeholder="e.g. intern, manager" /></label>
+            <label>Title level<select value={preferences.level} onChange={(e) => field("level", e.target.value)}><option value="any">Any level</option><option value="early">Early career</option><option value="senior">Senior</option><option value="lead">Staff / principal / lead</option><option value="management">Management</option></select></label>
+            <label>Maximum alternative roles<input type="number" min={1} max={50} value={preferences.maxRoles} onChange={(e) => field("maxRoles", e.target.value === "" ? "" : Number(e.target.value))} /></label>
+            <label className="comparison-checkbox"><input type="checkbox" checked={preferences.remoteOnly} onChange={(e) => field("remoteOnly", e.target.checked)} />Listed as remote only</label>
+          </fieldset>
+          <p className="comparison-method">Filters run before the shortlist limit. Related titles and resume keywords determine which matching roles get scored; this preliminary order is not an AI fit score. Location and level filters use listing metadata and titles, not inferred eligibility.</p>
+          <div className="row"><button className="btn primary" disabled={busy || !validBudget} onClick={() => start(false)}><BarChart3 size={14} />Start comparison</button><small>Up to {validBudget ? preferences.maxRoles + 1 : "—"} AI requests, including the current role. Uses API credits only when you start.</small></div>
+        </details>}
         {stale && <div className="notice warning"><AlertTriangle size={16} />The resume or company board has changed. Run a fresh comparison before choosing a role from these scores.</div>}
         {comparing && <div className="comparison-progress" role="status">
           <span><LoaderCircle size={15} className="spin" />{processing ? `${completed} of ${rows.length} roles processed` : "Finding open company roles…"}</span>
@@ -57,7 +75,7 @@ export default function CompanyComparison({ w, busy, comparing, onCompare, onCan
           <div className="comparison-summary"><strong>{ranked.length}<span>roles scored</span></strong>
             <strong>{baseline ?? "—"}<span>active role / 100</span></strong>
             <strong>{ranked[0]?.score ?? "—"}<span>best fit / 100</span></strong></div>
-          <details className="comparison-method"><summary>How scores and role selection work</summary><p>{Math.max(0, rows.length - 1)} of {comparison.totalAvailable} available alternatives selected{comparison.totalAvailable > 50 ? " with related titles first, then alphabetical ties" : ""}. The current role is rescored with this resume for a consistent comparison. Scores are subjective and can vary between runs; they are not hiring probabilities.</p></details>
+          <details className="comparison-method"><summary>How scores and role selection work</summary><p>Snapshot started {new Date(comparison.date).toLocaleString()}. {Math.max(0, rows.length - 1)} alternatives selected from {comparison.matching ?? comparison.totalAvailable} matching roles ({comparison.totalAvailable} available). Related titles and resume keywords guide shortlisting. The current role is scored using the same resume and rubric. {comparison.reusedCount || 0} completed scores reused on the last retry. Scores are subjective and can vary between runs; they are not hiring probabilities.</p></details>
           <label className="comparison-search">Filter ranked roles<input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search title or location" /></label>
           <div className="comparison-axis" aria-hidden="true"><span>FIT SCORE</span><span>0</span><span>50</span><span>100</span></div>
           <ol className="comparison-ranking" aria-label="Company roles ranked by fit score">
@@ -80,9 +98,9 @@ export default function CompanyComparison({ w, busy, comparing, onCompare, onCan
           {comparison.totalAvailable === 0 && <p className="panel-intro">No other open roles with a complete description were found on this company board.</p>}
           {rows.some((row) => row.status === "failed") && <details className="comparison-failures"><summary>Roles that could not be scored ({rows.filter((row) => row.status === "failed").length})</summary>
             {rows.filter((row) => row.status === "failed").map((row) => <p key={row.role.url}><strong>{row.role.title}:</strong> {row.error}</p>)}</details>}
-          <div className="row"><button className="btn" disabled={busy || !supported} onClick={start}>Run a fresh comparison</button><small>Choosing another role saves your current draft as a version, then runs its full analysis. Your resume text stays as it is.</small></div>
+          <div className="row">{canRetryComparison(w) && <button className="btn primary" disabled={busy} onClick={() => start(true)}>Retry unfinished roles ({rows.filter((r) => r.status !== "scored").length})</button>}<small>Retry uses the original shortlist and requests only its unfinished scores. Current filters and budget apply to a new Start comparison. Choosing another role saves your current draft as a version, then runs its full analysis.</small></div>
         </>}
-        {!comparison && !comparing && <p className="panel-intro">Start a comparison to see the ranked roles here. Any connection error appears on the page when you close this window.</p>}
+        {!comparison && !comparing && <p className="panel-intro">Choose your filters and budget above, then start scoring to see the ranked roles here.</p>}
       </div>
     </dialog>}
   </>;

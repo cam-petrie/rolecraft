@@ -9,13 +9,16 @@ import {
   RotateCcw,
   Check,
   Eye,
+  Undo2,
+  Redo2,
+  X,
 } from "lucide-react";
 import { exportResume } from "./documents.js";
+import { attachInlineEditor, captureCaret, restoreCaret } from "./inline-editor.js";
 import { alignPdfTabs } from "./pdf-preview.js";
 import { hasResumeLayout, selectedResumeLayout } from "./resume-layouts.js";
 import {
   markPreviewParagraphs,
-  normalizeInlineEdit,
   canEditRenderedParagraph,
   renderedParagraphText,
   wrapTemplateSource,
@@ -85,6 +88,12 @@ export default function DocumentViewport({
   selected,
   onSelect,
   onEdit,
+  onDraft,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  editRevision,
   preview,
   onCancelPreview,
   onApplyPreview,
@@ -95,7 +104,10 @@ export default function DocumentViewport({
   const host = useRef(),
     stage = useRef(),
     handlers = useRef();
-  handlers.current = { onSelect, onEdit };
+  handlers.current = { onSelect, onEdit, onDraft };
+  const draft = useRef(null), deferredRender = useRef(false);
+  const [renderRevision, forceRender] = useState(0);
+  useEffect(() => () => { draft.current?.cancel(); handlers.current.onDraft?.(null); }, []);
   const [zoom, setZoom] = useState(100),
     [original, setOriginal] = useState(initialOriginal),
     [loading, setLoading] = useState(true),
@@ -113,6 +125,14 @@ export default function DocumentViewport({
   useEffect(() => {
     if (editingStep || preview) setOriginal(false);
   }, [editingStep, preview]);
+  useEffect(() => {
+    // Disable the existing DOM immediately, before asynchronous re-rendering.
+    if (busy) for (const el of host.current?.querySelectorAll("[data-resume-id]") || []) {
+      el.dataset.editable = "false";
+      el.setAttribute("contenteditable", "false");
+      el.setAttribute("aria-readonly", "true");
+    }
+  }, [busy]);
   useEffect(() => { if (hasResumeLayout(w)) setOriginal(false); }, [w.resumeLayout]);
   const customLayout = !original && hasResumeLayout(w);
   const sourceMarkers = w.kind === "pdf" || customLayout;
@@ -216,6 +236,11 @@ export default function DocumentViewport({
           experimental: w.kind === "pdf",
         });
         if (cancelled) return;
+        if (draft.current?.dirty) { deferredRender.current = true; return; }
+        const active = target.contains(document.activeElement) ? document.activeElement.closest("[data-resume-id]") : null;
+        const activeId = active?.dataset.resumeId;
+        const caret = active ? captureCaret(active) : null;
+        draft.current?.save();
         const previousScroll = stage.current?.scrollTop || 0;
         target.replaceChildren(...detached.childNodes);
         let count = 0;
@@ -251,75 +276,19 @@ export default function DocumentViewport({
             el.classList.add("resume-paragraph-changed");
           if (preview?.paragraphId === p.id)
             el.classList.add("resume-paragraph-preview");
-          let html;
-          el.addEventListener("focus", () => {
-            handlers.current.onSelect(p.id);
-            html = el.innerHTML;
-            if (editable) setEditing(true);
-          });
-          el.addEventListener("click", (e) => {
-            if (e.target.closest("a")) e.preventDefault();
-            handlers.current.onSelect(p.id);
-          });
-          el.addEventListener("beforeinput", (e) => {
-            if (
-              e.inputType === "insertParagraph" ||
-              e.inputType === "insertLineBreak" ||
-              e.inputType?.startsWith("format")
-            )
-              e.preventDefault();
-          });
-          el.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              el.blur();
-            }
-            if (e.key === "Escape") {
-              e.preventDefault();
-              el.innerHTML = html;
-              el.blur();
-            }
-            if (
-              (e.ctrlKey || e.metaKey) &&
-              ["b", "i", "u"].includes(e.key.toLowerCase())
-            )
-              e.preventDefault();
-          });
-          el.addEventListener("paste", (e) => {
-            e.preventDefault();
-            if (!editable) return;
-            const text = normalizeInlineEdit(
-              e.clipboardData.getData("text/plain"),
-            );
-            const selection = window.getSelection();
-            if (!selection?.rangeCount) return;
-            const range = selection.getRangeAt(0);
-            if (!el.contains(range.commonAncestorContainer)) return;
-            range.deleteContents();
-            const node = document.createTextNode(text);
-            range.insertNode(node);
-            range.setStartAfter(node);
-            range.collapse(true);
-            selection.removeAllRanges();
-            selection.addRange(range);
-          });
-          el.addEventListener("drop", (e) => e.preventDefault());
-          el.addEventListener("blur", () => {
-            setEditing(false);
-            if (!editable) return;
-            const text = normalizeInlineEdit(
-              renderedParagraphText(el, w.kind === "pdf"),
-            );
-            if (text.length > 12000) {
-              el.innerHTML = html;
-              setError(
-                "A paragraph cannot exceed 12,000 characters. Your draft was not changed.",
-              );
-              return;
-            }
-            if (text !== p.text) handlers.current.onEdit(p.id, text);
+          attachInlineEditor(el, p, {
+            getText: () => renderedParagraphText(el, w.kind === "pdf"),
+            onSelect: (id) => handlers.current.onSelect(id),
+            onCommit: (id, text, before) => handlers.current.onEdit(id, text, before),
+            onSession: (session) => { draft.current = session; setEditing(Boolean(session)); handlers.current.onDraft?.(session); },
+            onError: setError,
+            onSettled: () => { if (deferredRender.current) { deferredRender.current = false; forceRender((n) => n + 1); } },
           });
         });
+        if (activeId) {
+          const next = [...target.querySelectorAll("[data-resume-id]")].find((el) => el.dataset.resumeId === activeId);
+          if (next?.dataset.editable === "true") { next.focus({ preventScroll: true }); restoreCaret(next, caret); }
+        }
         setMapped(count);
         setPageWidth(target.querySelector("section.docx")?.offsetWidth || 816);
         if (stage.current) stage.current.scrollTop = previousScroll;
@@ -340,7 +309,7 @@ export default function DocumentViewport({
     return () => {
       cancelled = true;
     };
-  }, [w.id, signature, original, Boolean(preview), busy, pdfOriginal, w.resumeLayout, suggestedParagraphKey]);
+  }, [w.id, signature, original, Boolean(preview), busy, pdfOriginal, w.resumeLayout, suggestedParagraphKey, renderRevision, editRevision]);
   useEffect(() => {
     const all = host.current?.querySelectorAll("[data-resume-id]") || [];
     for (const el of all) {
@@ -382,6 +351,10 @@ export default function DocumentViewport({
           )}
         </div>
         <div className="document-controls">
+          {!original && !preview && <>
+            <button className="icon-btn" aria-label="Undo resume edit" disabled={busy || !canUndo} onClick={onUndo}><Undo2 size={14}/></button>
+            <button className="icon-btn" aria-label="Redo resume edit" disabled={busy || !canRedo} onClick={onRedo}><Redo2 size={14}/></button>
+          </>}
           <button
             className="icon-btn"
             aria-label="Zoom out"
@@ -417,6 +390,7 @@ export default function DocumentViewport({
           <button
             className={original ? "view-toggle active" : "view-toggle"}
             onClick={() => {
+              if (draft.current && !draft.current.save()) return;
               setOriginal((v) => !v);
               onCancelPreview();
             }}
@@ -427,6 +401,11 @@ export default function DocumentViewport({
           </button>
         </div>
       </div>
+      {editing && <div className="inline-preview-bar inline-edit-actions">
+        <span>Editing a paragraph · Enter saves · Escape cancels</span>
+        <div><button onMouseDown={(e) => e.preventDefault()} onClick={() => { draft.current?.cancel(); document.activeElement?.blur(); }}><X size={13}/>Cancel edit</button>
+        <button className="apply-preview" onMouseDown={(e) => e.preventDefault()} onClick={() => { if (draft.current?.save()) document.activeElement?.blur(); }}><Check size={13}/>Save edit</button></div>
+      </div>}
       {preview && (
         <div className="inline-preview-bar">
           <span>

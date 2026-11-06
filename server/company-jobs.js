@@ -1,4 +1,5 @@
 import { jobBoardSource, sameJob } from "../shared/job-boards.js";
+import { shortlistCompanyRoles } from "../shared/comparison-options.js";
 
 export function plainJobText(html) {
   let s = String(html || "");
@@ -43,7 +44,7 @@ async function feedJSON(url, fetcher) {
   try { return JSON.parse(new TextDecoder().decode(bytes)); }
   catch { throw new Error("The company job board returned an invalid feed."); }
 }
-export async function fetchCompanyJobs(role, fetcher = fetch) {
+export async function fetchCompanyJobs(role, fetcher = fetch, options = {}) {
   const source = jobBoardSource(role?.url);
   if (!source?.jobId) throw new Error("Company comparison needs a direct Greenhouse, Lever or Ashby job listing URL, including its company and job ID.");
   const slug = encodeURIComponent(source.board);
@@ -84,13 +85,13 @@ export async function fetchCompanyJobs(role, fetcher = fetch) {
     if (!candidate?.jobId || candidate.key !== source.key || sameJob(url, role.url) || seen.has(candidate.jobId)) continue;
     if (typeof title !== "string" || !title.trim() || text.length < 100) continue;
     seen.add(candidate.jobId);
+    const workplace = String(item.workplaceType || "").toLowerCase();
+    const remote = typeof item.isRemote === "boolean" ? item.isRemote : ["remote", "onsite", "on-site", "hybrid"].includes(workplace) ? workplace === "remote" : undefined;
     roles.push({ title: title.slice(0, 300), company: String(role.company || source.board).slice(0, 300),
-      url, text: text.slice(0, 60000), location: String(location || "").slice(0, 300) });
+      url, text: text.slice(0, 60000), location: String(location || "").slice(0, 300), remote });
   }
   // Prefer related titles when a board has more than 50 alternatives; never
   // present this title-based shortlist as a ranking of unscored roles.
-  const terms = new Set(String(role.title || "").toLowerCase().match(/[a-z0-9+#]+/g) || []);
-  const overlap = (title) => (title.toLowerCase().match(/[a-z0-9+#]+/g) || []).filter((t) => terms.has(t)).length;
-  roles.sort((a, b) => overlap(b.title) - overlap(a.title) || a.title.localeCompare(b.title) || a.url.localeCompare(b.url));
-  return { source, total: roles.length, roles: roles.slice(0, 50) };
+  const selection = shortlistCompanyRoles(roles, role, options.preferences || { maxRoles: 50 }, options.keywords || []);
+  return { source, total: roles.length, ...selection };
 }

@@ -139,12 +139,14 @@ test("score-only gateway uses compact strict schema and rewrite estimates cannot
 });
 test("company discovery requires allowed-origin login and never forwards credentials to the board", async (t) => {
   const env = { ALLOWED_ORIGINS: "http://localhost:5173", SESSION_SECRET: "a".repeat(64), OWNER_GITHUB_ID: "90569344" };
-  const req = (headers) => new Request("http://gateway/company-jobs", { method: "POST", headers: { Origin: env.ALLOWED_ORIGINS, ...headers }, body: JSON.stringify({ role }) });
+  const req = (headers, body = { role }) => new Request("http://gateway/company-jobs", { method: "POST", headers: { Origin: env.ALLOWED_ORIGINS, ...headers }, body: JSON.stringify(body) });
   assert.equal((await worker.fetch(req({}), env)).status, 401);
   assert.equal((await worker.fetch(req({ Origin: "https://evil.test" }), env)).status, 403);
   const now = Math.floor(Date.now() / 1000);
   const token = await signToken({ type: "session", sub: "123", login: "another-user", iat: now, exp: now + 3600, iss: "http://gateway", aud: env.ALLOWED_ORIGINS }, env.SESSION_SECRET);
+  let feeds = 0;
   t.mock.method(globalThis, "fetch", async (url, options) => {
+    feeds++;
     assert.match(url, /^https:\/\/boards-api.greenhouse.io\//);
     assert.deepEqual(options.headers, { Accept: "application/json" });
     return Response.json({ jobs: [job(2)] });
@@ -153,4 +155,7 @@ test("company discovery requires allowed-origin login and never forwards credent
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Access-Control-Allow-Origin"), env.ALLOWED_ORIGINS);
   assert.equal((await response.json()).roles.length, 1);
+  const invalid = await worker.fetch(req({ Authorization: `Bearer ${token}` }, { role, preferences: { maxRoles: 51 } }), env);
+  assert.equal(invalid.status, 400);
+  assert.equal(feeds, 1);
 });

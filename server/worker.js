@@ -1,6 +1,7 @@
 import { oauth, authReady, authenticate, selectApiKey } from "./auth.js";
 import { rewriteFormatHints } from "../shared/resume-structure.js";
 import { fetchCompanyJobs } from "./company-jobs.js";
+import { comparisonOptionsSchema } from "../shared/comparison-options.js";
 import {
   requestSchema,
   analysisSchema,
@@ -400,7 +401,10 @@ export default {
       if (path === "/job")
         return json(await fetchJob(String(body.url || "")), 200, cors);
       if (path === "/company-jobs")
-        return json(await fetchCompanyJobs(roleSchema.parse(body.role)), 200, cors);
+        return json(await fetchCompanyJobs(roleSchema.parse(body.role), fetch, {
+          preferences: comparisonOptionsSchema.parse(body.preferences || { maxRoles: 50 }),
+          keywords: Array.isArray(body.keywords) ? body.keywords.slice(0, 120).filter((t) => typeof t === "string" && t.length <= 50) : [],
+        }), 200, cors);
       return json(
         await runAI(body, { ...env, OPENAI_API_KEY: apiKey }),
         200,

@@ -30,6 +30,12 @@ export default function ResumeWorkspace({
   selected,
   onSelect,
   onEdit,
+  onDraft,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  editRevision,
   onAnalyze,
   onCompare,
   onCancelComparison,
@@ -78,8 +84,7 @@ export default function ResumeWorkspace({
   const pending =
     w.analysis?.data.rewrites.filter((r, i) => !w.decisions?.[i]).length || 0;
   function apply(r, index) {
-    onAccept(r, index);
-    setPreview(null);
+    if (onAccept(r, index) !== false) setPreview(null);
   }
   function show(r, index) {
     onSelect(r.paragraphId);
@@ -126,6 +131,12 @@ export default function ResumeWorkspace({
           selected={selected}
           onSelect={onSelect}
           onEdit={onEdit}
+          onDraft={onDraft}
+          onUndo={onUndo}
+          onRedo={onRedo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          editRevision={editRevision}
           preview={preview}
           onCancelPreview={() => setPreview(null)}
           onApplyPreview={() => preview && apply(preview, preview.index)}

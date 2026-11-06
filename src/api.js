@@ -63,7 +63,11 @@ export async function gateway(config, path, body, { signal } = {}) {
       "The gateway returned an invalid response. Check backend setup.",
     );
   }
-  if (!r.ok) throw new Error(data.error || `Gateway error (${r.status})`);
+  if (!r.ok) {
+    const error = new Error(data.error || `Gateway error (${r.status})`);
+    error.status = r.status;
+    throw error;
+  }
   return data;
 }
 export async function callAI(config, task, workspace, extra = {}) {

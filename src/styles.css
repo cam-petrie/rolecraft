@@ -3789,3 +3789,20 @@ dialog.company-dialog { width: min(820px, calc(100vw - 24px)); max-width: 820px;
 :root[data-theme="dark"] .recommendation-heading button { color: #ded5ec; }
 :root[data-theme="dark"] .recommendation-before { background: #302b2d; color: #c6b4a3; }
 :root[data-theme="dark"] .recommendation-after { background: #332b42; border-color: #514260; color: #d4c1eb; }
+.comparison-settings { border: 1px solid var(--border); border-radius: 9px; padding: 14px; }
+.comparison-settings > summary { cursor: pointer; color: var(--teal); font-weight: 600; }
+.comparison-filter-grid { border: 0; padding: 16px 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; min-width: 0; }
+.comparison-filter-grid > label { display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
+.comparison-filter-grid input, .comparison-filter-grid select { width: 100%; min-width: 0; }
+.comparison-filter-grid .comparison-checkbox { flex-direction: row; align-items: center; gap: 8px; }
+.comparison-filter-grid .comparison-checkbox input { width: auto; }
+.comparison-settings .comparison-method { margin: 10px 0; }
+.comparison-settings .row { flex-wrap: wrap; }
+.comparison-settings .row small { color: var(--muted); font-size: 11px; flex: 1 1 200px; line-height: 1.6; }
+.inline-edit-actions button { white-space: nowrap; }
+@media (max-width: 550px) { .comparison-filter-grid { grid-template-columns: 1fr; } .inline-edit-actions { flex-wrap: wrap; gap: 8px; } }
+@media (max-width: 1100px) {
+  .document-toolbar { height: auto; min-height: 49px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; gap: 6px; }
+  .document-controls { margin-left: auto; }
+  .document-identity { max-width: 100%; }
+}

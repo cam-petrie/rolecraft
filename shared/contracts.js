@@ -150,13 +150,13 @@ export function signature(paragraphs, role) {
     role,
   });
 }
-export function applyRewrite(paragraphs, rewrite) {
+export function applyRewrite(paragraphs, rewrite, options) {
   const p = paragraphs.find((p) => p.id === rewrite.paragraphId);
   if (!p?.editable || p.text !== rewrite.before)
     throw new Error(
       "This paragraph has changed. Request a new suggestion before applying.",
     );
-  const structured = preserveRewriteStructure(paragraphs, rewrite);
+  const structured = preserveRewriteStructure(paragraphs, rewrite, options);
   return paragraphs.map((p) =>
     p.id === rewrite.paragraphId ? { ...p, text: structured.after } : p,
   );

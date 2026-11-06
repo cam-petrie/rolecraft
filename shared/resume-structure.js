@@ -26,13 +26,14 @@ export function paragraphStructures(paragraphs) {
     const values = body.slice(label.length);
     const trailingSeparator = values.match(/,\s*$/)?.[0] || "";
     const entries = skillItems(trailingSeparator ? values.slice(0, -trailingSeparator.length) : values);
-    const list = (!marker || inSkills) && entries.length >= 2 && entries.every((s) => s.trim() && s.trim().split(/\s+/).length <= 8) &&
+    const minimum = inSkills && !skillsHeading.test(text) && !sectionHeading.test(text) ? 1 : 2;
+    const list = (!marker || inSkills) && entries.length >= minimum && entries.every((s) => s.trim() && s.trim().split(/\s+/).length <= 8) &&
       !prose.test(values.trim()) && (inSkills || label || entries.every((s) => s.trim().split(/\s+/).length <= 3));
     return [p.id, { kind: list ? "skills-list" : marker || p.list ? "bullet" : "paragraph", marker, label,
-      separator: values.match(/,\s*/)?.[0] || ", ", trailingSeparator, nativeList: Boolean(p.list) }];
+      separator: values.match(/,\s*/)?.[0] || ", ", trailingSeparator, nativeList: Boolean(p.list), itemCount: entries.length }];
   }));
 }
-export function preserveRewriteStructure(paragraphs, rewrite) {
+export function preserveRewriteStructure(paragraphs, rewrite, { allowSingleSkill = false } = {}) {
   const format = paragraphStructures(paragraphs).get(rewrite.paragraphId);
   if (!format) return rewrite;
   let after = rewrite.after.trim().replace(bullet, "");
@@ -41,7 +42,7 @@ export function preserveRewriteStructure(paragraphs, rewrite) {
     // source label exactly once, including its original formatting whitespace.
     after = after.replace(/^[^:\n]{1,65}:\s*/, "");
     const entries = skillItems(after.replace(/,\s*$/, ""));
-    if (entries.length < 2 || entries.some((s) => !s || s.split(/\s+/).length > 8 || prose.test(s) || /[\n\r]|[.!?](?:\s|$)/.test(s)))
+    if (entries.length < (allowSingleSkill || format.itemCount === 1 ? 1 : 2) || entries.some((s) => !s || s.split(/\s+/).length > 8 || prose.test(s) || /[\n\r]|[.!?](?:\s|$)/.test(s)))
       throw new Error("This skills suggestion changed a list into prose. Request a new suggestion using comma-separated skill names. No edits were applied.");
     after = format.label + entries.join(format.separator) + format.trailingSeparator;
   }
